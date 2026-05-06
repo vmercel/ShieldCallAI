@@ -4,12 +4,13 @@
  * Flow:
  * 1. Three feature slides (swipeable)
  * 2. Sign Up screen (name, email, phone, password)
- * 3. Sign In screen (for returning users)
- * 4. AI Persona selection
+ * 3. OTP Verification screen (6-digit code sent to email)
+ * 4. Sign In screen (for returning users)
+ * 5. AI Persona selection
  * → Authenticated users land on /(tabs)
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Dimensions, ScrollView,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -96,7 +97,7 @@ const inputStyles = StyleSheet.create({
   },
 });
 
-// ─── Web Alert Modal ──────────────────────────────────────────────────────────
+// ─── Web Alert Hook ───────────────────────────────────────────────────────────
 function useWebAlert() {
   const [alertState, setAlertState] = useState({ visible: false, title: '', message: '' });
   const showAlert = useCallback((title: string, message: string) => {
@@ -125,8 +126,229 @@ function useWebAlert() {
   return { showAlert, AlertModal };
 }
 
+// ─── OTP Verification Screen ──────────────────────────────────────────────────
+function OtpScreen({
+  email,
+  onSuccess,
+  onBack,
+}: {
+  email: string;
+  onSuccess: () => void;
+  onBack: () => void;
+}) {
+  const { verifyOtp, resendOtp } = useAuth();
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState('');
+  const [countdown, setCountdown] = useState(60);
+  const [canResend, setCanResend] = useState(false);
+  const inputRefs = useRef<Array<TextInput | null>>([]);
+  const { showAlert, AlertModal } = useWebAlert();
+
+  useEffect(() => {
+    if (countdown <= 0) {
+      setCanResend(true);
+      return;
+    }
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
+
+  const handleChange = (val: string, idx: number) => {
+    const digit = val.replace(/[^0-9]/g, '').slice(-1);
+    const next = [...otp];
+    next[idx] = digit;
+    setOtp(next);
+    setError('');
+    if (digit && idx < 5) {
+      inputRefs.current[idx + 1]?.focus();
+    }
+  };
+
+  const handleKeyPress = (e: any, idx: number) => {
+    if (e.nativeEvent.key === 'Backspace' && !otp[idx] && idx > 0) {
+      const next = [...otp];
+      next[idx - 1] = '';
+      setOtp(next);
+      inputRefs.current[idx - 1]?.focus();
+    }
+  };
+
+  const handleVerify = async () => {
+    const code = otp.join('');
+    if (code.length < 6) {
+      setError('Please enter all 6 digits.');
+      return;
+    }
+    setLoading(true);
+    const { error: err } = await verifyOtp(email, code);
+    setLoading(false);
+    if (err) {
+      setError(err);
+      setOtp(['', '', '', '', '', '']);
+      setTimeout(() => inputRefs.current[0]?.focus(), 100);
+    } else {
+      onSuccess();
+    }
+  };
+
+  const handleResend = async () => {
+    if (!canResend || resending) return;
+    setResending(true);
+    const { error: err } = await resendOtp(email);
+    setResending(false);
+    if (err) {
+      showAlert('Resend Failed', err);
+    } else {
+      setCanResend(false);
+      setCountdown(60);
+      setOtp(['', '', '', '', '', '']);
+      setError('');
+      setTimeout(() => inputRefs.current[0]?.focus(), 100);
+    }
+  };
+
+  const maskedEmail = email.replace(/(.{2}).+?(@.+)/, '$1***$2');
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      {AlertModal}
+      <ScrollView
+        contentContainerStyle={styles.authContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Logo */}
+        <View style={styles.authLogoWrap}>
+          <MaterialIcons name="mark-email-unread" size={40} color={Colors.primary} />
+        </View>
+
+        <Text style={styles.authTitle}>Verify Your Email</Text>
+        <Text style={styles.authSubtitle}>
+          We sent a 6-digit code to{'\n'}
+          <Text style={{ color: Colors.primary, fontWeight: FontWeight.bold }}>{maskedEmail}</Text>
+        </Text>
+
+        {/* 6-digit boxes */}
+        <View style={otpStyles.row}>
+          {otp.map((digit, idx) => (
+            <TextInput
+              key={idx}
+              ref={ref => { inputRefs.current[idx] = ref; }}
+              style={[
+                otpStyles.box,
+                digit ? otpStyles.boxFilled : null,
+                error ? otpStyles.boxError : null,
+              ]}
+              value={digit}
+              onChangeText={val => handleChange(val, idx)}
+              onKeyPress={e => handleKeyPress(e, idx)}
+              keyboardType="number-pad"
+              maxLength={1}
+              selectTextOnFocus
+              autoFocus={idx === 0}
+              accessibilityLabel={`Digit ${idx + 1} of 6`}
+            />
+          ))}
+        </View>
+
+        {error ? (
+          <View style={styles.errorBox}>
+            <MaterialIcons name="error-outline" size={16} color={Colors.danger} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+
+        {/* Verify button */}
+        <TouchableOpacity
+          style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
+          onPress={handleVerify}
+          disabled={loading}
+          activeOpacity={0.85}
+        >
+          {loading ? (
+            <ActivityIndicator color={Colors.textInverse} size="small" />
+          ) : (
+            <>
+              <MaterialIcons name="verified-user" size={18} color={Colors.textInverse} />
+              <Text style={styles.primaryBtnText}>Verify & Continue</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* Resend */}
+        <TouchableOpacity
+          onPress={handleResend}
+          disabled={!canResend || resending}
+          style={[styles.switchBtn, (!canResend || resending) && { opacity: 0.5 }]}
+          activeOpacity={0.8}
+        >
+          {resending ? (
+            <ActivityIndicator color={Colors.primary} size="small" />
+          ) : (
+            <Text style={styles.switchText}>
+              {canResend
+                ? <Text style={styles.switchLink}>Resend code</Text>
+                : `Resend code in ${countdown}s`}
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.privacyBox}>
+          <MaterialIcons name="info-outline" size={14} color={Colors.primary} />
+          <Text style={styles.privacyText}>
+            Check your spam folder if you don't see the email. The code expires in 10 minutes.
+          </Text>
+        </View>
+
+        {/* Wrong email? */}
+        <TouchableOpacity onPress={onBack} style={styles.switchBtn} activeOpacity={0.8}>
+          <Text style={styles.switchText}>
+            Wrong email? <Text style={styles.switchLink}>Go back</Text>
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const otpStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  box: {
+    width: 46,
+    height: 58,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    fontSize: 26,
+    fontWeight: FontWeight.extrabold,
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  boxFilled: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryGlow,
+  },
+  boxError: {
+    borderColor: Colors.danger,
+    backgroundColor: Colors.dangerGlow,
+  },
+});
+
 // ─── Sign Up Screen ───────────────────────────────────────────────────────────
-function SignUpScreen({ onSignIn, onSuccess }: { onSignIn: () => void; onSuccess: () => void }) {
+function SignUpScreen({
+  onSignIn,
+  onSuccess,
+}: {
+  onSignIn: () => void;
+  onSuccess: (email: string) => void;
+}) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -135,7 +357,7 @@ function SignUpScreen({ onSignIn, onSuccess }: { onSignIn: () => void; onSuccess
   const [loading, setLoading] = useState(false);
   const [fieldError, setFieldError] = useState('');
   const { signUp } = useAuth();
-  const { showAlert, AlertModal } = useWebAlert();
+  const { AlertModal } = useWebAlert();
 
   const handleSignUp = async () => {
     setFieldError('');
@@ -152,15 +374,12 @@ function SignUpScreen({ onSignIn, onSuccess }: { onSignIn: () => void; onSuccess
     if (error) {
       setFieldError(error);
     } else {
-      onSuccess();
+      onSuccess(email.trim().toLowerCase());
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {AlertModal}
       <ScrollView
         style={{ flex: 1 }}
@@ -283,10 +502,7 @@ function SignInScreen({ onSignUp, onSuccess }: { onSignUp: () => void; onSuccess
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.authContent}
@@ -403,11 +619,12 @@ function PersonaScreen({ onActivate }: { onActivate: (name: string) => void }) {
 }
 
 // ─── Main Onboarding ──────────────────────────────────────────────────────────
-type Screen = 'slides' | 'signup' | 'signin' | 'persona';
+type Screen = 'slides' | 'signup' | 'otp' | 'signin' | 'persona';
 
 export default function OnboardingScreen() {
   const [screen, setScreen] = useState<Screen>('slides');
   const [slideIndex, setSlideIndex] = useState(0);
+  const [pendingEmail, setPendingEmail] = useState('');
   const scrollRef = useRef<ScrollView>(null);
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -424,7 +641,19 @@ export default function OnboardingScreen() {
     }
   };
 
-  const handleAuthSuccess = () => {
+  // After signup → show OTP screen
+  const handleSignUpSuccess = (email: string) => {
+    setPendingEmail(email);
+    setScreen('otp');
+  };
+
+  // After OTP verified → persona
+  const handleOtpSuccess = () => {
+    setScreen('persona');
+  };
+
+  // After sign-in → persona
+  const handleSignInSuccess = () => {
     setScreen('persona');
   };
 
@@ -441,15 +670,27 @@ export default function OnboardingScreen() {
   if (screen === 'signup') {
     return (
       <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => setScreen('slides')}
-        >
+        <TouchableOpacity style={styles.backBtn} onPress={() => setScreen('slides')}>
           <MaterialIcons name="arrow-back" size={22} color={Colors.textSecondary} />
         </TouchableOpacity>
         <SignUpScreen
           onSignIn={() => setScreen('signin')}
-          onSuccess={handleAuthSuccess}
+          onSuccess={handleSignUpSuccess}
+        />
+      </View>
+    );
+  }
+
+  if (screen === 'otp') {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => setScreen('signup')}>
+          <MaterialIcons name="arrow-back" size={22} color={Colors.textSecondary} />
+        </TouchableOpacity>
+        <OtpScreen
+          email={pendingEmail}
+          onSuccess={handleOtpSuccess}
+          onBack={() => setScreen('signup')}
         />
       </View>
     );
@@ -458,15 +699,12 @@ export default function OnboardingScreen() {
   if (screen === 'signin') {
     return (
       <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => setScreen('signup')}
-        >
+        <TouchableOpacity style={styles.backBtn} onPress={() => setScreen('signup')}>
           <MaterialIcons name="arrow-back" size={22} color={Colors.textSecondary} />
         </TouchableOpacity>
         <SignInScreen
           onSignUp={() => setScreen('signup')}
-          onSuccess={handleAuthSuccess}
+          onSuccess={handleSignInSuccess}
         />
       </View>
     );
@@ -539,9 +777,7 @@ export default function OnboardingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
-  backBtn: {
-    padding: Spacing.md, paddingBottom: 4,
-  },
+  backBtn: { padding: Spacing.md, paddingBottom: 4 },
 
   // Slides
   slide: { height, position: 'relative' },

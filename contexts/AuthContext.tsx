@@ -31,6 +31,8 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   signUp: (email: string, password: string, fullName: string, phone: string) => Promise<{ error: string | null }>;
+  verifyOtp: (email: string, token: string) => Promise<{ error: string | null }>;
+  resendOtp: (email: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: string | null }>;
@@ -126,6 +128,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   }, []);
 
+  const verifyOtp = useCallback(async (
+    email: string,
+    token: string,
+  ): Promise<{ error: string | null }> => {
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token: token.trim(),
+      type: 'signup',
+    });
+    if (error) return { error: error.message };
+    return { error: null };
+  }, []);
+
+  const resendOtp = useCallback(async (
+    email: string,
+  ): Promise<{ error: string | null }> => {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim().toLowerCase(),
+    });
+    if (error) return { error: error.message };
+    return { error: null };
+  }, []);
+
   const signIn = useCallback(async (
     email: string,
     password: string,
@@ -164,6 +190,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       isAuthenticated: !!session,
       signUp,
+      verifyOtp,
+      resendOtp,
       signIn,
       signOut,
       updateProfile,
