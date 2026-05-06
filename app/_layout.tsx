@@ -15,6 +15,7 @@ export default function RootLayout() {
           <Stack.Screen name="live-call" options={{ presentation: 'fullScreenModal' }} />
           <Stack.Screen name="ghost-mode" options={{ presentation: 'fullScreenModal' }} />
           <Stack.Screen name="call-detail" />
+          <Stack.Screen name="incoming-call" options={{ presentation: 'fullScreenModal' }} />
         </Stack>
       </AppProvider>
     </SafeAreaProvider>
