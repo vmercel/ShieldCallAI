@@ -30,6 +30,7 @@ import { AcousticSentinel, AcousticSnapshot } from '../services/acousticSentinel
 import { ThreatLevel } from '../constants/mockData';
 import { findContactByNumber, getInitials, Contact } from '../constants/contacts';
 import { useLiveTranscription, TranscriptSegment } from '../hooks/useLiveTranscription';
+import { callRecordsService } from '../services/callRecordsService';
 
 function formatDuration(s: number) {
   return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
@@ -246,6 +247,37 @@ export default function LiveCallScreen() {
   const handleEnd = async () => {
     transcription.stop();
     await acousticRef.current.stopMonitoring();
+
+    // Save call record to Supabase
+    const finalAnalysis = sentinelRef.current.analyzeConversation();
+    const transcriptData = transcription.segments
+      .filter(s => s.isFinal)
+      .map(s => ({ speaker: s.speaker === 'A' ? (direction === 'outbound' ? 'you' : 'caller') : (direction === 'outbound' ? 'them' : 'you'), text: s.text }));
+
+    callRecordsService.insert({
+      caller_name: callerName,
+      caller_number: callerNumber,
+      caller_org: contact?.org,
+      direction: direction as 'inbound' | 'outbound',
+      started_at: new Date(Date.now() - duration * 1000).toISOString(),
+      ended_at: new Date().toISOString(),
+      duration_seconds: duration,
+      threat_level: finalAnalysis.level,
+      threat_score: finalAnalysis.compositeScore,
+      scam_type: finalAnalysis.scamType,
+      summary: finalAnalysis.allFlags.length > 0
+        ? `SENTINEL™ detected: ${finalAnalysis.allFlags.slice(0, 3).join(', ')}. Composite threat: ${finalAnalysis.compositeScore}%.`
+        : 'No threat indicators detected. Call appeared legitimate.',
+      ai_notes: finalAnalysis.allFactChecks.length > 0 ? finalAnalysis.allFactChecks[0] : undefined,
+      tags: finalAnalysis.dominantCategory ? [finalAnalysis.dominantCategory.replace(/_/g, ' ')] : [],
+      ghost_handled: false,
+      transcript: transcriptData,
+      flags: finalAnalysis.allFlags,
+      fact_checks: finalAnalysis.allFactChecks,
+      is_blocked: false,
+      reported_to_ftc: false,
+    }).catch(() => {});
+
     router.back();
   };
 
