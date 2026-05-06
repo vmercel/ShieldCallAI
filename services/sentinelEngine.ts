@@ -66,6 +66,12 @@ export class SentinelEngine {
   private windowHistory: ThreatWindow[] = [];
   private cumulativeText = '';
   private categoryHitCounts: Partial<Record<ScamCategory, number>> = {};
+  /** Peak composite score ever seen — score can never fall below 70% of this */
+  private peakScore = 0;
+  /** All flags ever detected across the full conversation */
+  private allFlagsEver: Set<string> = new Set();
+  /** All fact-checks ever triggered */
+  private allFactChecksEver: Set<string> = new Set();
 
   // ─── PUBLIC API ────────────────────────────────────────────────────────────
 
@@ -73,23 +79,36 @@ export class SentinelEngine {
    * Ingest a new text segment (500ms chunk from transcription)
    * Returns a fully-scored ThreatWindow
    */
+  /**
+   * Ingest a new text segment AND re-analyze the full cumulative transcript.
+   * This ensures every batch has the full conversation context — so scam
+   * elements from earlier turns are never lost as the conversation continues.
+   */
   ingestSegment(text: string): ThreatWindow {
     this.cumulativeText += ' ' + text;
-    const normalized = this.normalizeText(text);
+    // CRITICAL: analyze the FULL cumulative text, not just the new segment.
+    // This means the engine always has complete context from call start.
+    const normalized = this.normalizeText(this.cumulativeText);
     const matches = this.scanPatterns(normalized);
     const rawScore = this.computeRawScore(matches, normalized);
     const trajectory = this.computeTrajectory(rawScore);
     const finalScore = this.applyTrajectoryMultiplier(rawScore, trajectory);
 
-    // Track category hits
+    // Track category hits and build persistent flag/fact-check sets
     matches.forEach(m => {
       this.categoryHitCounts[m.pattern.category] =
         (this.categoryHitCounts[m.pattern.category] || 0) + m.matchCount;
+      this.allFlagsEver.add(m.pattern.flag);
+      if (m.pattern.factCheck) this.allFactChecksEver.add(m.pattern.factCheck);
     });
 
+    // Track peak score for ratchet mechanism
+    const cappedFinal = Math.min(100, Math.round(finalScore));
+    if (cappedFinal > this.peakScore) this.peakScore = cappedFinal;
+
     const window: ThreatWindow = {
-      score: Math.min(100, Math.round(finalScore)),
-      level: this.scoreToLevel(Math.min(100, finalScore)),
+      score: cappedFinal,
+      level: this.scoreToLevel(cappedFinal),
       flags: [...new Set(matches.map(m => m.pattern.flag))],
       categories: [...new Set(matches.map(m => m.pattern.category))],
       factChecks: matches
@@ -114,10 +133,11 @@ export class SentinelEngine {
       return this.emptyAnalysis();
     }
 
-    // Composite score: weighted average of windows, recency-boosted
+    // Composite score with ratchet: can't fall below 70% of peak
     const compositeScore = this.computeCompositeScore();
-    const allFlags = [...new Set(this.windowHistory.flatMap(w => w.flags))];
-    const allFactChecks = [...new Set(this.windowHistory.flatMap(w => w.factChecks))];
+    // Use persistent flag/fact-check sets — never lose earlier detections
+    const allFlags = [...this.allFlagsEver];
+    const allFactChecks = [...this.allFactChecksEver];
     const trajectoryLabel = this.windowHistory[this.windowHistory.length - 1]?.trajectoryLabel ?? 'stable';
     const dominantCategory = this.getDominantCategory();
     const level = this.scoreToLevel(compositeScore);
@@ -149,6 +169,9 @@ export class SentinelEngine {
     this.windowHistory = [];
     this.cumulativeText = '';
     this.categoryHitCounts = {};
+    this.peakScore = 0;
+    this.allFlagsEver = new Set();
+    this.allFactChecksEver = new Set();
   }
 
   /**
@@ -283,21 +306,27 @@ export class SentinelEngine {
 
   private applyTrajectoryMultiplier(rawScore: number, trajectory: { multiplier: number }): number {
     // Don't multiply trivially low scores to avoid false rising positives
-    if (rawScore < 8) return rawScore;
-    return rawScore * trajectory.multiplier;
+    if (rawScore < 5) return rawScore;
+    // Cap the multiplier effect to prevent runaway scores on full-text re-analysis
+    const boosted = rawScore * trajectory.multiplier;
+    return Math.min(rawScore * 1.8, boosted); // Max 1.8x boost to prevent overscoring
   }
 
   private computeCompositeScore(): number {
     if (this.windowHistory.length === 0) return 0;
-    // Recency-weighted average: later windows count more
-    let weightSum = 0;
-    let scoreSum = 0;
-    this.windowHistory.forEach((w, i) => {
-      const weight = Math.pow(1.4, i); // exponential recency boost
-      weightSum += weight;
-      scoreSum += w.score * weight;
-    });
-    return Math.min(100, Math.round(scoreSum / weightSum));
+
+    // PEAK RATCHET: The latest window score (from full cumulative text) is the
+    // most accurate. But it can't drop below 70% of the peak ever seen.
+    // This prevents scam calls from appearing safe when the scammer shifts
+    // to neutral-sounding follow-up questions after establishing urgency.
+    const latestScore = this.windowHistory[this.windowHistory.length - 1].score;
+    const peakFloor = Math.round(this.peakScore * 0.70);
+    const ratchetedScore = Math.max(latestScore, peakFloor);
+
+    // Also compute max-window score as a second floor (best single window)
+    const maxWindowScore = Math.max(...this.windowHistory.map(w => w.score));
+    // Final = max(ratcheted, 60% of best single window)
+    return Math.min(100, Math.max(ratchetedScore, Math.round(maxWindowScore * 0.60)));
   }
 
   private getDominantCategory(): ScamCategory | null {

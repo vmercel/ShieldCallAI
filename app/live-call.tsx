@@ -1,20 +1,17 @@
 /**
  * CALLSHIELD Live Call Screen — Enhanced Real-Time Analysis
  *
- * Analysis Architecture:
+ * Analysis Architecture (v2 — Fixed):
  * ─────────────────────────────────────────────────────────
- * Batch-based: runs every 10 seconds OR when a pause > 1.5s
- * is detected (longer than normal speech pause of ~0.3-0.5s).
- *
- * Each batch feeds ALL accumulated transcript into SENTINEL™.
- * The longer the call, the more context → higher confidence.
- *
- * Result Card dimensions:
- *  1. Safety Level (0–100% composite score)
- *  2. Caller Type  — AI/Synthetic vs Human (acoustic + cadence)
- *  3. Number Status — Spam-associated vs Clean (community_threats DB)
- *  4. Content Verdict — Scam vs Genuine (NLP classification)
- *  5. Progressive Confidence — improves with conversation length
+ * • Batch-based: runs every 10 seconds OR when a pause > 1.5s is detected.
+ * • SENTINEL™ always receives the FULL cumulative transcript (not just new
+ *   segments), so every re-analysis has complete call context.
+ * • Peak-score ratchet: the display score can never fall below 75% of the
+ *   highest score ever reached. A scammer who shifts to neutral follow-up
+ *   questions after establishing urgency cannot suddenly appear "safe".
+ * • Content verdict uses both current AND peak score — "genuine" is only
+ *   returned when BOTH are low throughout the entire call.
+ * • Flags and fact-checks are cumulative across all batches (never lost).
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -45,7 +42,6 @@ type SpamStatus = 'checking' | 'clean' | 'spam' | 'suspicious';
 type ContentVerdict = 'insufficient' | 'genuine' | 'suspicious' | 'scam';
 
 interface AnalysisResult {
-  // Core threat
   score: number;
   level: ThreatLevel;
   flags: string[];
@@ -53,17 +49,16 @@ interface AnalysisResult {
   scamType: string | null;
   trajectoryLabel: 'rising' | 'falling' | 'stable';
   confidenceLabel: string;
-  // New dimensions
   callerType: CallerType;
-  callerTypeConfidence: number;       // 0–100
+  callerTypeConfidence: number;
   spamStatus: SpamStatus;
   spamReportCount: number;
   contentVerdict: ContentVerdict;
-  contentVerdictScore: number;        // 0–100 (how confident the verdict is)
-  // Progressive context
+  contentVerdictScore: number;
   wordsAnalyzed: number;
   batchCount: number;
   contextQuality: 'low' | 'medium' | 'high' | 'very_high';
+  peakScore: number;
   lastUpdated: number;
 }
 
@@ -75,18 +70,11 @@ function buildEmptyResult(): AnalysisResult {
     spamStatus: 'checking', spamReportCount: 0,
     contentVerdict: 'insufficient', contentVerdictScore: 0,
     wordsAnalyzed: 0, batchCount: 0, contextQuality: 'low',
-    lastUpdated: 0,
+    peakScore: 0, lastUpdated: 0,
   };
 }
 
 // ─── Caller Type Detector ─────────────────────────────────────────────────────
-/**
- * Detects AI/synthetic vs human caller based on:
- * - Speech rate consistency (synthetic TTS has very uniform word timing)
- * - Acoustic deepfake confidence from AcousticSentinel
- * - Vocabulary diversity (synthetic tends to use scripted vocabulary)
- * - Response latency patterns
- */
 function detectCallerType(
   acousticDeepfakeConfidence: number,
   segments: TranscriptSegment[],
@@ -94,11 +82,9 @@ function detectCallerType(
 ): { type: CallerType; confidence: number } {
   if (segments.length < 2) return { type: 'unknown', confidence: 0 };
 
-  // Factor 1: Acoustic deepfake signal (primary)
   const acousticSignal = acousticDeepfakeConfidence;
-
-  // Factor 2: Inter-segment timing consistency (synthetic = very uniform)
   const callerSegments = segments.filter(s => s.isFinal && s.speaker === 'A');
+
   let timingVarianceScore = 0;
   if (callerSegments.length >= 3) {
     const gaps: number[] = [];
@@ -107,26 +93,18 @@ function detectCallerType(
     }
     const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
     const variance = gaps.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / gaps.length;
-    const cv = Math.sqrt(variance) / (mean || 1); // Coefficient of variation
-    // Low CV → too uniform → synthetic
+    const cv = Math.sqrt(variance) / (mean || 1);
     timingVarianceScore = cv < 0.25 ? 70 : cv < 0.4 ? 35 : 10;
   }
 
-  // Factor 3: Vocabulary diversity (synthetic tends to be lower)
   const allWords = callerSegments.flatMap(s => s.text.toLowerCase().split(/\s+/));
   const uniqueWords = new Set(allWords);
   const diversityRatio = allWords.length > 0 ? uniqueWords.size / allWords.length : 1;
   const vocabScore = diversityRatio < 0.5 ? 50 : diversityRatio < 0.65 ? 25 : 0;
-
-  // Factor 4: Low acoustic stress (synthetic voices have unnaturally low stress)
   const stressScore = acousticStress < 10 && callerSegments.length >= 3 ? 40 : 0;
 
-  // Combined confidence that caller is AI/synthetic
   const syntheticConfidence = Math.min(100, Math.round(
-    acousticSignal * 0.45 +
-    timingVarianceScore * 0.25 +
-    vocabScore * 0.15 +
-    stressScore * 0.15
+    acousticSignal * 0.45 + timingVarianceScore * 0.25 + vocabScore * 0.15 + stressScore * 0.15
   ));
 
   if (syntheticConfidence >= 55) return { type: 'ai_synthetic', confidence: syntheticConfidence };
@@ -142,13 +120,35 @@ function getContextQuality(words: number, batches: number): AnalysisResult['cont
   return 'low';
 }
 
-function getContentVerdict(score: number, batches: number): { verdict: ContentVerdict; confidence: number } {
+// ─── Content Verdict (Peak-Aware) ─────────────────────────────────────────────
+/**
+ * Uses BOTH current AND peak score for verdict.
+ * "Genuine" can ONLY be returned if both scores are consistently low.
+ * A scam call that established urgency early is never re-classified as
+ * genuine just because the scammer shifted to neutral-sounding follow-ups.
+ */
+function getContentVerdict(
+  currentScore: number,
+  peakScore: number,
+  batches: number,
+): { verdict: ContentVerdict; confidence: number } {
   if (batches < 1) return { verdict: 'insufficient', confidence: 0 };
-  const progressiveThreshold = Math.max(0, 65 - batches * 3); // Gets easier to call with more context
-  if (score >= progressiveThreshold + 20) return { verdict: 'scam', confidence: Math.min(99, score + batches * 4) };
-  if (score >= progressiveThreshold) return { verdict: 'suspicious', confidence: Math.min(80, score + batches * 3) };
-  if (batches >= 2) return { verdict: 'genuine', confidence: Math.min(90, (100 - score) * 0.8 + batches * 5) };
-  return { verdict: 'insufficient', confidence: 20 + batches * 10 };
+
+  // Effective score = max(current, 80% of peak).
+  // This prevents verdict downgrade when scammer shifts tone.
+  const effectiveScore = Math.max(currentScore, Math.round(peakScore * 0.80));
+
+  if (effectiveScore >= 65) {
+    return { verdict: 'scam', confidence: Math.min(99, effectiveScore + batches * 4) };
+  }
+  if (effectiveScore >= 35) {
+    return { verdict: 'suspicious', confidence: Math.min(85, effectiveScore + batches * 3) };
+  }
+  // Genuine: only when BOTH current AND peak have been low all along
+  if (batches >= 2 && peakScore < 30 && currentScore < 30) {
+    return { verdict: 'genuine', confidence: Math.min(88, (100 - effectiveScore) * 0.8 + batches * 4) };
+  }
+  return { verdict: 'insufficient', confidence: 20 + batches * 8 };
 }
 
 // ─── Animated Waveform Bar ────────────────────────────────────────────────────
@@ -173,7 +173,6 @@ function ScoreRing({ score, color, size = 72 }: { score: number; color: string; 
   useEffect(() => {
     Animated.spring(anim, { toValue: score, tension: 60, friction: 10, useNativeDriver: false }).start();
   }, [score]);
-
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
       <View style={{
@@ -232,58 +231,49 @@ function SpeakerLabel({ speaker, direction }: { speaker: 'A' | 'B'; direction: s
   return <Text style={{ fontSize: 9, fontWeight: '900', color, letterSpacing: 0.8, marginBottom: 2 }}>{label}</Text>;
 }
 
-// ─── RESULT CARD COMPONENT ────────────────────────────────────────────────────
-interface ResultCardProps {
-  result: AnalysisResult;
-  isAnalyzing: boolean;
-  callDuration: number;
-}
-
-function ResultCard({ result, isAnalyzing, callDuration }: ResultCardProps) {
+// ─── RESULT CARD ─────────────────────────────────────────────────────────────
+function ResultCard({ result, isAnalyzing }: { result: AnalysisResult; isAnalyzing: boolean }) {
   const threatColor = SentinelEngine.getThreatColor(result.level);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  // Flash animation when updated
   useEffect(() => {
     if (result.lastUpdated === 0) return;
     Animated.sequence([
-      Animated.timing(fadeAnim, { toValue: 0.5, duration: 120, useNativeDriver: true }),
-      Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 0.55, duration: 110, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 260, useNativeDriver: true }),
     ]).start();
   }, [result.lastUpdated]);
 
-  const contextColors = {
-    low: Colors.textMuted,
-    medium: Colors.warning,
-    high: Colors.primary,
-    very_high: Colors.safe,
-  };
+  const contextColors = { low: Colors.textMuted, medium: Colors.warning, high: Colors.primary, very_high: Colors.safe };
   const contextColor = contextColors[result.contextQuality];
 
+  // Caller type
   const callerTypeIcon = result.callerType === 'ai_synthetic' ? 'smart-toy' : result.callerType === 'human' ? 'person' : 'help-outline';
   const callerTypeColor = result.callerType === 'ai_synthetic' ? Colors.warning : result.callerType === 'human' ? Colors.safe : Colors.textMuted;
   const callerTypeLabel = result.callerType === 'ai_synthetic' ? 'AI / Synthetic Voice' : result.callerType === 'human' ? 'Human Caller' : 'Detecting...';
 
+  // Spam status
   const spamIcon = result.spamStatus === 'spam' ? 'warning' : result.spamStatus === 'suspicious' ? 'report-problem' : result.spamStatus === 'clean' ? 'verified' : 'hourglass-top';
   const spamColor = result.spamStatus === 'spam' ? Colors.danger : result.spamStatus === 'suspicious' ? Colors.warning : result.spamStatus === 'clean' ? Colors.safe : Colors.textMuted;
   const spamLabel = result.spamStatus === 'spam'
-    ? `Spam Database: ${result.spamReportCount.toLocaleString()} reports`
+    ? `Spam DB: ${result.spamReportCount.toLocaleString()} reports`
     : result.spamStatus === 'suspicious'
-    ? `Low-trust number: ${result.spamReportCount} reports`
+    ? `Low-trust: ${result.spamReportCount} reports`
     : result.spamStatus === 'clean'
-    ? 'Number not in spam database'
-    : 'Checking number database...';
+    ? 'Not in spam database'
+    : 'Checking database...';
 
+  // Content verdict
   const verdictIcon = result.contentVerdict === 'scam' ? 'dangerous' : result.contentVerdict === 'genuine' ? 'check-circle' : result.contentVerdict === 'suspicious' ? 'warning' : 'psychology';
   const verdictColor = result.contentVerdict === 'scam' ? Colors.danger : result.contentVerdict === 'genuine' ? Colors.safe : result.contentVerdict === 'suspicious' ? Colors.warning : Colors.textMuted;
   const verdictLabel = result.contentVerdict === 'scam' ? 'Scam Detected' : result.contentVerdict === 'genuine' ? 'Appears Genuine' : result.contentVerdict === 'suspicious' ? 'Suspicious Content' : 'Analyzing...';
   const verdictSub = result.contentVerdict === 'insufficient'
-    ? `Needs more context · ${Math.max(0, 30 - result.wordsAnalyzed)} more words`
-    : `${result.contentVerdictScore}% confidence`;
+    ? `Need ~${Math.max(0, 30 - result.wordsAnalyzed)} more words`
+    : `${result.contentVerdictScore}% confidence · peak ${result.peakScore}%`;
 
   return (
     <Animated.View style={[styles.resultCard, { borderColor: threatColor + '55', opacity: fadeAnim }]}>
-      {/* Header Row */}
+      {/* Header */}
       <View style={styles.resultHeader}>
         <View style={styles.resultHeaderLeft}>
           <View style={[styles.levelDot, { backgroundColor: threatColor }]} />
@@ -296,8 +286,14 @@ function ResultCard({ result, isAnalyzing, callDuration }: ResultCardProps) {
               <Text style={styles.risingText}>RISING</Text>
             </View>
           )}
+          {result.peakScore > 0 && result.score < result.peakScore && (
+            <View style={styles.peakBadge}>
+              <MaterialIcons name="show-chart" size={10} color={Colors.warning} />
+              <Text style={styles.peakText}>PEAK {result.peakScore}%</Text>
+            </View>
+          )}
         </View>
-        <View style={styles.resultHeaderRight}>
+        <View>
           {isAnalyzing ? (
             <View style={styles.analyzingBadge}>
               <View style={styles.analyzingDot} />
@@ -306,24 +302,20 @@ function ResultCard({ result, isAnalyzing, callDuration }: ResultCardProps) {
           ) : result.batchCount > 0 ? (
             <View style={[styles.contextBadge, { borderColor: contextColor + '55' }]}>
               <MaterialIcons name="psychology" size={10} color={contextColor} />
-              <Text style={[styles.contextText, { color: contextColor }]}>{result.contextQuality.replace('_', ' ').toUpperCase()} CONTEXT</Text>
+              <Text style={[styles.contextText, { color: contextColor }]}>{result.contextQuality.replace('_', ' ').toUpperCase()}</Text>
             </View>
           ) : (
             <View style={styles.waitingBadge}>
-              <Text style={styles.waitingText}>WAITING FOR SPEECH</Text>
+              <Text style={styles.waitingText}>WAITING</Text>
             </View>
           )}
         </View>
       </View>
 
-      {/* Main Score + Dimensions */}
+      {/* Score + Dimensions */}
       <View style={styles.resultMain}>
-        {/* Score Ring */}
         <ScoreRing score={result.score} color={threatColor} size={76} />
-
-        {/* Dimension Cards */}
         <View style={styles.dimensionsCol}>
-          {/* Caller Type */}
           <View style={[styles.dimCard, { borderColor: callerTypeColor + '33', backgroundColor: callerTypeColor + '0D' }]}>
             <MaterialIcons name={callerTypeIcon as any} size={13} color={callerTypeColor} />
             <View style={{ flex: 1 }}>
@@ -333,16 +325,12 @@ function ResultCard({ result, isAnalyzing, callDuration }: ResultCardProps) {
               )}
             </View>
           </View>
-
-          {/* Spam Status */}
           <View style={[styles.dimCard, { borderColor: spamColor + '33', backgroundColor: spamColor + '0D' }]}>
             <MaterialIcons name={spamIcon as any} size={13} color={spamColor} />
             <View style={{ flex: 1 }}>
               <Text style={[styles.dimLabel, { color: spamColor }]} numberOfLines={1}>{spamLabel}</Text>
             </View>
           </View>
-
-          {/* Content Verdict */}
           <View style={[styles.dimCard, { borderColor: verdictColor + '33', backgroundColor: verdictColor + '0D' }]}>
             <MaterialIcons name={verdictIcon as any} size={13} color={verdictColor} />
             <View style={{ flex: 1 }}>
@@ -353,22 +341,19 @@ function ResultCard({ result, isAnalyzing, callDuration }: ResultCardProps) {
         </View>
       </View>
 
-      {/* Confidence Bar */}
+      {/* Confidence bar */}
       {result.batchCount > 0 && (
         <View style={styles.confidenceRow}>
           <MaterialIcons name="signal-cellular-alt" size={12} color={Colors.textMuted} />
           <Text style={styles.confidenceLabel}>{result.confidenceLabel}</Text>
           <View style={styles.confidenceTrack}>
-            <View style={[styles.confidenceFill, {
-              width: `${result.contentVerdictScore}%`,
-              backgroundColor: verdictColor,
-            }]} />
+            <View style={[styles.confidenceFill, { width: `${result.contentVerdictScore}%`, backgroundColor: verdictColor }]} />
           </View>
-          <Text style={styles.batchCount}>Batch {result.batchCount}</Text>
+          <Text style={styles.batchCount}>B{result.batchCount} · {result.wordsAnalyzed}w</Text>
         </View>
       )}
 
-      {/* Threat Flags */}
+      {/* Flags */}
       {result.flags.length > 0 && (
         <View style={styles.flagsRow}>
           {result.flags.slice(0, 4).map(f => (
@@ -379,13 +364,13 @@ function ResultCard({ result, isAnalyzing, callDuration }: ResultCardProps) {
           ))}
           {result.flags.length > 4 && (
             <View style={[styles.flagChip, { borderColor: Colors.border }]}>
-              <Text style={[styles.flagText, { color: Colors.textMuted }]}>+{result.flags.length - 4} more</Text>
+              <Text style={[styles.flagText, { color: Colors.textMuted }]}>+{result.flags.length - 4}</Text>
             </View>
           )}
         </View>
       )}
 
-      {/* Scam Classification */}
+      {/* Scam type */}
       {result.scamType && (
         <View style={styles.scamBadge}>
           <MaterialIcons name="local-police" size={12} color={Colors.danger} />
@@ -393,10 +378,9 @@ function ResultCard({ result, isAnalyzing, callDuration }: ResultCardProps) {
         </View>
       )}
 
-      {/* Progress hint for low context */}
       {result.contextQuality === 'low' && result.batchCount === 0 && (
         <Text style={styles.listeningHint}>
-          Analysis updates every 10s · Speak naturally, both parties detected
+          Analysis every 10s or on pause · score never drops below 75% of peak
         </Text>
       )}
     </Animated.View>
@@ -404,7 +388,6 @@ function ResultCard({ result, isAnalyzing, callDuration }: ResultCardProps) {
 }
 
 // ─── MAIN SCREEN ─────────────────────────────────────────────────────────────
-
 export default function LiveCallScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -418,11 +401,9 @@ export default function LiveCallScreen() {
   const contact = findContactByNumber(callerNumber);
   const callerName = contact?.name ?? params.callerName ?? 'Unknown Caller';
 
-  // ── Engines ──────────────────────────────────────────────────────────────
   const sentinelRef = useRef(new SentinelEngine());
   const acousticRef = useRef(new AcousticSentinel());
 
-  // ── Core State ───────────────────────────────────────────────────────────
   const [duration, setDuration] = useState(0);
   const [result, setResult] = useState<AnalysisResult>(buildEmptyResult());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -440,17 +421,18 @@ export default function LiveCallScreen() {
   const [spamRecord, setSpamRecord] = useState<CommunityThreat | null>(null);
   const [spamChecked, setSpamChecked] = useState(false);
 
-  // ── Batch Analysis State ─────────────────────────────────────────────────
-  const batchBufferRef = useRef<string[]>([]);         // Segments since last batch
-  const lastSegmentTimeRef = useRef<number>(0);        // For pause detection
+  // Batch state
+  const batchBufferRef = useRef<string[]>([]);
   const batchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const batchCountRef = useRef(0);
-  const allSegmentsRef = useRef<string[]>([]);          // All segments ever
+  const allSegmentsRef = useRef<string[]>([]);
   const wordsAnalyzedRef = useRef(0);
   const acousticStressRef = useRef(0);
   const deepfakeRef = useRef(0);
   const transcriptionSegmentsRef = useRef<TranscriptSegment[]>([]);
+  /** Peak display score — ratchet floor = 75% of this */
+  const peakScoreRef = useRef(0);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const listenDotAnim = useRef(new Animated.Value(1)).current;
@@ -458,36 +440,34 @@ export default function LiveCallScreen() {
   const transcriptRef = useRef<ScrollView>(null);
   const factCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Spam Number Lookup ────────────────────────────────────────────────────
+  // ── Spam check ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!callerNumber || callerNumber === 'AI-DIALED') {
-      setSpamChecked(true);
-      return;
-    }
+    if (!callerNumber || callerNumber === 'AI-DIALED') { setSpamChecked(true); return; }
     communityThreatsService.checkNumber(callerNumber).then(({ data }) => {
       setSpamRecord(data);
       setSpamChecked(true);
     });
   }, [callerNumber]);
 
-  // ── Run a batch analysis pass ─────────────────────────────────────────────
+  // ── Core batch analysis ──────────────────────────────────────────────────
   const runBatchAnalysis = useCallback(() => {
-    if (batchBufferRef.current.length === 0 && batchCountRef.current > 0) return;
-    if (allSegmentsRef.current.length === 0 && batchBufferRef.current.length === 0) return;
+    const newText = batchBufferRef.current.join(' ');
+    const newWords = newText.split(/\s+/).filter(Boolean).length;
+
+    // Need either new words, or at least 1 previous batch + something changed (spam check done)
+    if (newWords === 0 && batchCountRef.current === 0) return;
 
     setIsAnalyzing(true);
 
-    // Feed the batch to SENTINEL™
-    const batchText = batchBufferRef.current.join(' ');
-    if (batchText.trim()) {
-      sentinelRef.current.ingestSegment(batchText);
-    }
+    // KEY FIX: Feed new text to engine (engine internally appends to cumulative).
+    // For the first batch after spam check completes with no new words,
+    // feed a zero-length string to trigger re-analysis of cumulative.
+    sentinelRef.current.ingestSegment(newText);
 
     batchBufferRef.current = [];
     batchCountRef.current += 1;
-    wordsAnalyzedRef.current += batchText.split(/\s+/).filter(Boolean).length;
+    wordsAnalyzedRef.current += newWords;
 
-    // Get full conversation analysis
     const analysis = sentinelRef.current.analyzeConversation();
 
     // Caller type detection
@@ -498,30 +478,35 @@ export default function LiveCallScreen() {
     );
 
     // Spam status
-    const spamStatus: SpamStatus = !spamChecked
-      ? 'checking'
-      : spamRecord
-      ? (spamRecord.report_count >= 100 ? 'spam' : 'suspicious')
+    const spamStatus: SpamStatus = !spamChecked ? 'checking'
+      : spamRecord ? (spamRecord.report_count >= 100 ? 'spam' : 'suspicious')
       : 'clean';
-
-    // Content verdict
-    const { verdict: contentVerdict, confidence: contentVerdictScore } = getContentVerdict(
-      analysis.compositeScore,
-      batchCountRef.current,
-    );
 
     // Context quality
     const contextQuality = getContextQuality(wordsAnalyzedRef.current, batchCountRef.current);
 
-    // All flags combined
-    const allFlags = [...new Set([
-      ...analysis.allFlags,
-      ...acousticFlags,
-    ])];
+    // All flags — engine already accumulates these, plus acoustic
+    const allFlags = [...new Set([...analysis.allFlags, ...acousticFlags])];
+
+    // ── PEAK RATCHET ──
+    // The raw composite from the engine already includes a 70% ratchet internally.
+    // Apply an additional 75% ratchet at display level for full protection.
+    const rawScore = analysis.compositeScore;
+    const ratchetFloor = Math.round(peakScoreRef.current * 0.75);
+    const displayScore = Math.max(rawScore, ratchetFloor);
+    if (displayScore > peakScoreRef.current) peakScoreRef.current = displayScore;
+
+    const displayLevel: ThreatLevel = displayScore >= 65 ? 'danger' : displayScore >= 30 ? 'warning' : 'safe';
+
+    const { verdict: contentVerdict, confidence: contentVerdictScore } = getContentVerdict(
+      displayScore,
+      peakScoreRef.current,
+      batchCountRef.current,
+    );
 
     const newResult: AnalysisResult = {
-      score: analysis.compositeScore,
-      level: analysis.level,
+      score: displayScore,
+      level: displayLevel,
       flags: allFlags,
       factChecks: analysis.allFactChecks,
       scamType: analysis.scamType,
@@ -536,13 +521,13 @@ export default function LiveCallScreen() {
       wordsAnalyzed: wordsAnalyzedRef.current,
       batchCount: batchCountRef.current,
       contextQuality,
+      peakScore: peakScoreRef.current,
       lastUpdated: Date.now(),
     };
 
     setResult(newResult);
     setIsAnalyzing(false);
 
-    // Show fact check if available
     if (analysis.allFactChecks.length > 0) {
       setActiveFactCheck(analysis.allFactChecks[0]);
       setShowFactCheck(true);
@@ -551,67 +536,51 @@ export default function LiveCallScreen() {
     }
   }, [acousticFlags, spamChecked, spamRecord]);
 
-  // ── Handle new speech segment ─────────────────────────────────────────────
+  // ── Handle new speech segment ────────────────────────────────────────────
   const handleSegment = useCallback((text: string, speaker: 'A' | 'B') => {
     batchBufferRef.current.push(text);
     allSegmentsRef.current.push(text);
-    lastSegmentTimeRef.current = Date.now();
-
-    // Clear any pending pause timer
     pauseTimerRef.current && clearTimeout(pauseTimerRef.current);
-
-    // Set a pause timer: if no new segment in 1.5s → run analysis
     pauseTimerRef.current = setTimeout(() => {
-      if (batchBufferRef.current.length > 0) {
-        runBatchAnalysis();
-      }
+      if (batchBufferRef.current.length > 0) runBatchAnalysis();
     }, 1500);
   }, [runBatchAnalysis]);
 
-  // ── Live Transcription Hook ───────────────────────────────────────────────
   const transcription = useLiveTranscription(handleSegment);
 
-  // Update ref so detectCallerType can see latest segments
   useEffect(() => {
     transcriptionSegmentsRef.current = transcription.segments;
   }, [transcription.segments]);
 
-  // ── 10-second batch timer ─────────────────────────────────────────────────
+  // 10-second batch timer
   useEffect(() => {
     batchTimerRef.current = setInterval(() => {
-      if (allSegmentsRef.current.length > 0) {
-        runBatchAnalysis();
-      }
+      if (allSegmentsRef.current.length > 0) runBatchAnalysis();
     }, 10000);
-    return () => {
-      batchTimerRef.current && clearInterval(batchTimerRef.current);
-    };
+    return () => { batchTimerRef.current && clearInterval(batchTimerRef.current); };
   }, [runBatchAnalysis]);
 
-  // ── Re-run analysis when spam check completes ─────────────────────────────
+  // Re-run when spam check completes
   useEffect(() => {
-    if (spamChecked && batchCountRef.current > 0) {
-      runBatchAnalysis();
-    }
+    if (spamChecked && batchCountRef.current > 0) runBatchAnalysis();
   }, [spamChecked, spamRecord]);
 
-  // ── Update result when acoustic signals change ────────────────────────────
+  // Sync acoustic refs
   useEffect(() => {
     acousticStressRef.current = acousticStress;
     deepfakeRef.current = deepfakeConfidence;
   }, [acousticStress, deepfakeConfidence]);
 
-  // ── Mount effects ─────────────────────────────────────────────────────────
+  // ── Mount ────────────────────────────────────────────────────────────────
   useEffect(() => {
     sentinelRef.current.reset();
+    peakScoreRef.current = 0;
     durationTimerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
 
-    const listenPulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(listenDotAnim, { toValue: 0.3, duration: 600, useNativeDriver: true }),
-        Animated.timing(listenDotAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-      ])
-    );
+    const listenPulse = Animated.loop(Animated.sequence([
+      Animated.timing(listenDotAnim, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+      Animated.timing(listenDotAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+    ]));
     listenPulse.start();
 
     const pulsate = () => {
@@ -648,7 +617,6 @@ export default function LiveCallScreen() {
     };
   }, []);
 
-  // Scroll transcript to bottom
   useEffect(() => {
     if (transcription.segments.length > 0) {
       setTimeout(() => transcriptRef.current?.scrollToEnd({ animated: true }), 80);
@@ -668,7 +636,6 @@ export default function LiveCallScreen() {
   const handleEnd = async () => {
     transcription.stop();
     await acousticRef.current.stopMonitoring();
-
     const finalAnalysis = sentinelRef.current.analyzeConversation();
     const transcriptData = transcription.segments
       .filter(s => s.isFinal)
@@ -676,7 +643,6 @@ export default function LiveCallScreen() {
         speaker: s.speaker === 'A' ? (direction === 'outbound' ? 'you' : 'caller') : (direction === 'outbound' ? 'them' : 'you'),
         text: s.text,
       }));
-
     callRecordsService.insert({
       caller_name: callerName,
       caller_number: callerNumber,
@@ -686,10 +652,10 @@ export default function LiveCallScreen() {
       ended_at: new Date().toISOString(),
       duration_seconds: duration,
       threat_level: finalAnalysis.level,
-      threat_score: finalAnalysis.compositeScore,
+      threat_score: Math.max(finalAnalysis.compositeScore, peakScoreRef.current),
       scam_type: finalAnalysis.scamType,
       summary: finalAnalysis.allFlags.length > 0
-        ? `SENTINEL™ detected: ${finalAnalysis.allFlags.slice(0, 3).join(', ')}. Composite threat: ${finalAnalysis.compositeScore}%.`
+        ? `SENTINEL™ detected: ${finalAnalysis.allFlags.slice(0, 3).join(', ')}. Peak threat: ${peakScoreRef.current}%.`
         : 'No threat indicators detected. Call appeared legitimate.',
       ai_notes: finalAnalysis.allFactChecks.length > 0 ? finalAnalysis.allFactChecks[0] : undefined,
       tags: finalAnalysis.dominantCategory ? [finalAnalysis.dominantCategory.replace(/_/g, ' ')] : [],
@@ -700,7 +666,6 @@ export default function LiveCallScreen() {
       is_blocked: false,
       reported_to_ftc: false,
     }).catch(() => {});
-
     router.back();
   };
 
@@ -710,8 +675,7 @@ export default function LiveCallScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-
-        {/* ── Header ── */}
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={handleEnd} style={styles.backBtn}>
             <MaterialIcons name="keyboard-arrow-down" size={28} color={Colors.textSecondary} />
@@ -741,7 +705,7 @@ export default function LiveCallScreen() {
           </View>
         </View>
 
-        {/* ── Caller Row + Waveform ── */}
+        {/* Caller Row */}
         <View style={styles.callerRow}>
           <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
             <CallerAvatar contact={contact} color={threatColor} size={52} />
@@ -750,7 +714,6 @@ export default function LiveCallScreen() {
             <Text style={styles.callerName} numberOfLines={1}>{callerName}</Text>
             <Text style={styles.callerNumber}>{callerNumber}</Text>
           </View>
-          {/* Mini waveform */}
           <View style={[styles.waveformWrap, { borderColor: threatColor + '33' }]}>
             {amplitudeHistory.slice(-24).map((amp, i) => (
               <WaveformBar
@@ -762,10 +725,10 @@ export default function LiveCallScreen() {
           </View>
         </View>
 
-        {/* ── RESULT CARD (Main Intelligence Panel) ── */}
-        <ResultCard result={result} isAnalyzing={isAnalyzing} callDuration={duration} />
+        {/* Result Card */}
+        <ResultCard result={result} isAnalyzing={isAnalyzing} />
 
-        {/* ── Fact Check Banner ── */}
+        {/* Fact Check Banner */}
         {showFactCheck && (
           <TouchableOpacity style={styles.factBanner} onPress={() => setShowFactCheck(false)} activeOpacity={0.9}>
             <MaterialIcons name="fact-check" size={15} color={Colors.warning} />
@@ -774,7 +737,7 @@ export default function LiveCallScreen() {
           </TouchableOpacity>
         )}
 
-        {/* ── Auto-Listen Status ── */}
+        {/* Listen Status */}
         <View style={[styles.listeningBanner, {
           backgroundColor: isWebSTT ? (transcription.isListening ? Colors.primaryGlow : Colors.bgCard) : Colors.bgCard,
           borderColor: isWebSTT ? (transcription.isListening ? Colors.primary + '44' : Colors.border) : Colors.border,
@@ -786,14 +749,14 @@ export default function LiveCallScreen() {
                 opacity: listenDotAnim,
               }]} />
               <Text style={[styles.listeningLabel, { color: transcription.isListening ? Colors.primary : Colors.textMuted }]}>
-                {transcription.isListening ? 'Listening · analyzing in 10s batches or on pause' : 'Starting...'}
+                {transcription.isListening ? 'Listening · 10s batches · score ratcheted to peak' : 'Starting...'}
               </Text>
-              <Text style={styles.wordCountText}>{transcription.wordCount}w · {result.batchCount} batches</Text>
+              <Text style={styles.wordCountText}>{transcription.wordCount}w · B{result.batchCount}</Text>
             </>
           ) : (
             <>
               <MaterialIcons name="graphic-eq" size={13} color={Colors.warning} />
-              <Text style={styles.listeningLabel}>Acoustic monitoring · {result.batchCount} batches run</Text>
+              <Text style={styles.listeningLabel}>Acoustic monitoring · {result.batchCount} batches</Text>
               <TouchableOpacity onPress={() => setShowManual(m => !m)} style={styles.addBtn}>
                 <MaterialIcons name={showManual ? 'remove' : 'add'} size={15} color={Colors.primary} />
               </TouchableOpacity>
@@ -801,14 +764,14 @@ export default function LiveCallScreen() {
           )}
         </View>
 
-        {/* ── Live Transcript ── */}
+        {/* Transcript */}
         <ScrollView
           ref={transcriptRef}
           style={styles.transcript}
           contentContainerStyle={styles.transcriptContent}
           showsVerticalScrollIndicator={false}
         >
-          {transcription.segments.length === 0 ? (
+          {transcription.segments.length === 0 && (
             <View style={styles.emptyTranscript}>
               {isWebSTT ? (
                 <>
@@ -822,42 +785,34 @@ export default function LiveCallScreen() {
                   </View>
                   <Text style={styles.emptyTitle}>SENTINEL™ is listening</Text>
                   <Text style={styles.emptySubtitle}>
-                    Speak naturally. Analysis runs every 10 seconds.{'\n'}
-                    Results improve as conversation continues.
+                    Speak naturally. Score updates every 10 seconds.{'\n'}
+                    Risk score never drops below 75% of peak.
                   </Text>
                 </>
               ) : (
                 <>
                   <MaterialIcons name="graphic-eq" size={32} color={Colors.warning} />
                   <Text style={styles.emptyTitle}>Acoustic monitoring active</Text>
-                  <Text style={styles.emptySubtitle}>
-                    Tap + above to add transcript text for analysis.
-                  </Text>
+                  <Text style={styles.emptySubtitle}>Tap + to add transcript text for analysis.</Text>
                 </>
               )}
             </View>
-          ) : null}
+          )}
 
-          {transcription.segments.map(seg => {
-            const score = seg.threatScore ?? 0;
-            const segColor = score >= 65 ? Colors.danger : score >= 30 ? Colors.warning : Colors.safe;
-            const batchProcessed = seg.analyzed;
-
-            return (
-              <View key={seg.id} style={[styles.transcriptLine, {
-                borderLeftColor: batchProcessed ? segColor : Colors.border + '88',
-                borderLeftWidth: 2.5,
-              }]}>
-                <SpeakerLabel speaker={seg.speaker} direction={direction} />
-                <Text style={styles.transcriptText}>{seg.text}</Text>
-                <View style={styles.segFooter}>
-                  <Text style={styles.segTime}>
-                    {new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
+          {transcription.segments.map(seg => (
+            <View key={seg.id} style={[styles.transcriptLine, {
+              borderLeftColor: seg.analyzed
+                ? ((seg.threatScore ?? 0) >= 65 ? Colors.danger : (seg.threatScore ?? 0) >= 30 ? Colors.warning : Colors.safe)
+                : Colors.border + '88',
+              borderLeftWidth: 2.5,
+            }]}>
+              <SpeakerLabel speaker={seg.speaker} direction={direction} />
+              <Text style={styles.transcriptText}>{seg.text}</Text>
+              <Text style={styles.segTime}>
+                {new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </Text>
+            </View>
+          ))}
 
           {transcription.interimText ? (
             <View style={[styles.transcriptLine, styles.interimLine]}>
@@ -867,7 +822,7 @@ export default function LiveCallScreen() {
           ) : null}
         </ScrollView>
 
-        {/* ── Manual Input (native fallback) ── */}
+        {/* Manual input */}
         {(showManual || (!isWebSTT && Platform.OS !== 'web')) && (
           <View style={styles.manualInputRow}>
             <TextInput
@@ -889,7 +844,7 @@ export default function LiveCallScreen() {
           </View>
         )}
 
-        {/* ── Call Controls ── */}
+        {/* Controls */}
         <View style={[styles.controls, { paddingBottom: insets.bottom + 6 }]}>
           <TouchableOpacity
             style={[styles.controlBtn, isMuted && styles.controlBtnActive]}
@@ -899,11 +854,9 @@ export default function LiveCallScreen() {
             <MaterialIcons name={isMuted ? 'mic-off' : 'mic'} size={20} color={isMuted ? Colors.danger : Colors.textSecondary} />
             <Text style={[styles.controlLabel, isMuted && { color: Colors.danger }]}>{isMuted ? 'Unmute' : 'Mute'}</Text>
           </TouchableOpacity>
-
           <TouchableOpacity style={styles.endBtn} onPress={handleEnd} activeOpacity={0.85}>
             <MaterialIcons name="call-end" size={26} color="#fff" />
           </TouchableOpacity>
-
           <TouchableOpacity
             style={[styles.controlBtn, isSpeaker && styles.controlBtnActive]}
             onPress={() => setIsSpeaker(s => !s)}
@@ -913,7 +866,6 @@ export default function LiveCallScreen() {
             <Text style={[styles.controlLabel, isSpeaker && { color: Colors.primary }]}>Speaker</Text>
           </TouchableOpacity>
         </View>
-
       </View>
     </KeyboardAvoidingView>
   );
@@ -921,196 +873,89 @@ export default function LiveCallScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
-
-  // ── Header ──
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md, marginBottom: Spacing.xs,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md, marginBottom: Spacing.xs },
   backBtn: { padding: 6 },
   headerCenter: { flex: 1, alignItems: 'center', gap: 4 },
-  sentinelBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.primaryGlow, paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.borderStrong,
-  },
+  sentinelBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primaryGlow, paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.borderStrong },
   listenDot: { width: 6, height: 6, borderRadius: 3 },
   sentinelLabel: { fontSize: 9, fontWeight: FontWeight.extrabold, letterSpacing: 1 },
-  directionBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 7, paddingVertical: 2, borderRadius: Radius.full, borderWidth: 1,
-  },
+  directionBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 2, borderRadius: Radius.full, borderWidth: 1 },
   outboundBadge: { backgroundColor: Colors.primaryGlow, borderColor: Colors.primary + '44' },
   inboundBadge: { backgroundColor: Colors.safeGlow, borderColor: Colors.safe + '44' },
   directionText: { fontSize: 9, fontWeight: FontWeight.extrabold, letterSpacing: 0.5 },
-  durationPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.bgCard, paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border,
-  },
+  durationPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.bgCard, paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
   recDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.danger },
   durationText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.text },
 
-  // ── Caller Row ──
-  callerRow: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    paddingHorizontal: Spacing.md, marginBottom: Spacing.xs,
-  },
+  callerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, marginBottom: Spacing.xs },
   callerName: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.text },
   callerNumber: { fontSize: FontSize.xs, color: Colors.textSecondary },
-  waveformWrap: {
-    height: 40, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.bgCard, borderRadius: Radius.md,
-    paddingHorizontal: Spacing.xs, borderWidth: 1, overflow: 'hidden',
-    flex: 0.9,
-  },
+  waveformWrap: { height: 40, flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bgCard, borderRadius: Radius.md, paddingHorizontal: Spacing.xs, borderWidth: 1, overflow: 'hidden', flex: 0.9 },
 
-  // ── Result Card ──
-  resultCard: {
-    marginHorizontal: Spacing.md, backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg, padding: Spacing.md,
-    borderWidth: 1.5, marginBottom: Spacing.xs, gap: Spacing.sm,
-  },
+  resultCard: { marginHorizontal: Spacing.md, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1.5, marginBottom: Spacing.xs, gap: Spacing.sm },
   resultHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  resultHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  resultHeaderRight: {},
+  resultHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1 },
   levelDot: { width: 10, height: 10, borderRadius: 5 },
   resultLevelLabel: { fontSize: FontSize.sm, fontWeight: FontWeight.extrabold, letterSpacing: 1 },
-  risingBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: Colors.dangerGlow, borderRadius: Radius.full,
-    paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: Colors.danger + '44',
-  },
+  risingBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.dangerGlow, borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: Colors.danger + '44' },
   risingText: { fontSize: 9, fontWeight: FontWeight.extrabold, color: Colors.danger, letterSpacing: 0.5 },
-  analyzingBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.warningGlow, borderRadius: Radius.full,
-    paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: Colors.warning + '44',
-  },
+  peakBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.warningGlow, borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: Colors.warning + '44' },
+  peakText: { fontSize: 9, fontWeight: FontWeight.extrabold, color: Colors.warning, letterSpacing: 0.5 },
+  analyzingBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.warningGlow, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: Colors.warning + '44' },
   analyzingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.warning },
   analyzingText: { fontSize: 9, fontWeight: FontWeight.extrabold, color: Colors.warning, letterSpacing: 0.5 },
-  contextBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.bgSurface, borderRadius: Radius.full,
-    paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1,
-  },
+  contextBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.bgSurface, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
   contextText: { fontSize: 9, fontWeight: FontWeight.extrabold, letterSpacing: 0.5 },
-  waitingBadge: {
-    backgroundColor: Colors.bgSurface, borderRadius: Radius.full,
-    paddingHorizontal: 8, paddingVertical: 3,
-  },
+  waitingBadge: { backgroundColor: Colors.bgSurface, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
   waitingText: { fontSize: 9, fontWeight: FontWeight.bold, color: Colors.textMuted, letterSpacing: 0.5 },
 
   resultMain: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   dimensionsCol: { flex: 1, gap: Spacing.xs + 2 },
-  dimCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 7,
-    borderRadius: Radius.sm, paddingHorizontal: 8, paddingVertical: 6,
-    borderWidth: 1,
-  },
+  dimCard: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: Radius.sm, paddingHorizontal: 8, paddingVertical: 6, borderWidth: 1 },
   dimLabel: { fontSize: 11, fontWeight: FontWeight.bold, lineHeight: 14 },
   dimSub: { fontSize: 9, color: Colors.textMuted, marginTop: 1 },
 
-  confidenceRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingTop: Spacing.xs, borderTopWidth: 1, borderTopColor: Colors.border + '66',
-  },
-  confidenceLabel: { fontSize: FontSize.xs, color: Colors.textMuted, flex: 0.7 },
+  confidenceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: Spacing.xs, borderTopWidth: 1, borderTopColor: Colors.border + '66' },
+  confidenceLabel: { fontSize: FontSize.xs, color: Colors.textMuted, flex: 0.8 },
   confidenceTrack: { flex: 1, height: 4, backgroundColor: Colors.bgSurface, borderRadius: 2, overflow: 'hidden' },
   confidenceFill: { height: '100%', borderRadius: 2 },
   batchCount: { fontSize: 9, color: Colors.textMuted, fontWeight: FontWeight.bold },
 
   flagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
-  flagChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    paddingHorizontal: 6, paddingVertical: 3, borderRadius: Radius.full, borderWidth: 1,
-  },
+  flagChip: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: Radius.full, borderWidth: 1 },
   flagText: { fontSize: 9, fontWeight: FontWeight.semibold },
-  scamBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.dangerGlow, borderRadius: Radius.full,
-    paddingHorizontal: 10, paddingVertical: 3,
-    borderWidth: 1, borderColor: Colors.danger + '44', alignSelf: 'flex-start',
-  },
+  scamBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.dangerGlow, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: Colors.danger + '44', alignSelf: 'flex-start' },
   scamText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.danger },
-  listeningHint: {
-    fontSize: 10, color: Colors.textMuted, textAlign: 'center', fontStyle: 'italic', lineHeight: 15,
-  },
+  listeningHint: { fontSize: 10, color: Colors.textMuted, textAlign: 'center', fontStyle: 'italic', lineHeight: 15 },
 
-  // ── Fact Banner ──
-  factBanner: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm,
-    marginHorizontal: Spacing.md, backgroundColor: Colors.warningGlow,
-    borderRadius: Radius.md, padding: Spacing.sm + 2,
-    borderWidth: 1.5, borderColor: Colors.warning + '55', marginBottom: Spacing.xs,
-  },
+  factBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, marginHorizontal: Spacing.md, backgroundColor: Colors.warningGlow, borderRadius: Radius.md, padding: Spacing.sm + 2, borderWidth: 1.5, borderColor: Colors.warning + '55', marginBottom: Spacing.xs },
   factText: { flex: 1, fontSize: FontSize.xs, color: Colors.warning, lineHeight: 17 },
 
-  // ── Listening Banner ──
-  listeningBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    marginHorizontal: Spacing.md, borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md, paddingVertical: 7,
-    borderWidth: 1, marginBottom: Spacing.xs,
-  },
+  listeningBanner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginHorizontal: Spacing.md, borderRadius: Radius.md, paddingHorizontal: Spacing.md, paddingVertical: 7, borderWidth: 1, marginBottom: Spacing.xs },
   listenPulse: { width: 7, height: 7, borderRadius: 3.5 },
   listeningLabel: { flex: 1, fontSize: 10, fontWeight: FontWeight.semibold, lineHeight: 14 },
   wordCountText: { fontSize: 9, color: Colors.textMuted },
-  addBtn: {
-    width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primaryGlow,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.borderStrong,
-  },
+  addBtn: { width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primaryGlow, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.borderStrong },
 
-  // ── Transcript ──
-  transcript: {
-    flex: 1, marginHorizontal: Spacing.md, backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.xs,
-  },
+  transcript: { flex: 1, marginHorizontal: Spacing.md, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.xs },
   transcriptContent: { padding: Spacing.sm, gap: Spacing.sm },
   emptyTranscript: { alignItems: 'center', paddingTop: Spacing.lg, gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingBottom: Spacing.lg },
   emptyTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center' },
   emptySubtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
-  transcriptLine: {
-    backgroundColor: Colors.bgSurface, borderRadius: Radius.sm, padding: Spacing.sm,
-    borderLeftWidth: 2.5, gap: 3,
-  },
+  transcriptLine: { backgroundColor: Colors.bgSurface, borderRadius: Radius.sm, padding: Spacing.sm, borderLeftWidth: 2.5, gap: 3 },
   interimLine: { borderLeftColor: Colors.primary + '55', backgroundColor: Colors.primaryGlow + '33', opacity: 0.85 },
   interimSpeakerLabel: { fontSize: 9, fontWeight: '900', color: Colors.primary, letterSpacing: 0.8 },
   interimLineText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontStyle: 'italic', lineHeight: 18 },
   transcriptText: { fontSize: FontSize.sm, color: Colors.text, lineHeight: 19 },
-  segFooter: { flexDirection: 'row', alignItems: 'center' },
-  segTime: { fontSize: 9, color: Colors.textMuted, marginLeft: 'auto' },
+  segTime: { fontSize: 9, color: Colors.textMuted, alignSelf: 'flex-end' },
 
-  // ── Manual Input ──
-  manualInputRow: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs,
-    borderTopWidth: 1, borderTopColor: Colors.border,
-  },
-  manualInput: {
-    flex: 1, backgroundColor: Colors.bgCard, borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
-    fontSize: FontSize.sm, color: Colors.text,
-    borderWidth: 1.5, borderColor: Colors.borderStrong, includeFontPadding: false,
-  },
-  manualSendBtn: {
-    width: 40, height: 40, borderRadius: Radius.md, backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  manualInputRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderTopWidth: 1, borderTopColor: Colors.border },
+  manualInput: { flex: 1, backgroundColor: Colors.bgCard, borderRadius: Radius.md, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, fontSize: FontSize.sm, color: Colors.text, borderWidth: 1.5, borderColor: Colors.borderStrong, includeFontPadding: false },
+  manualSendBtn: { width: 40, height: 40, borderRadius: Radius.md, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
 
-  // ── Controls ──
-  controls: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
-    paddingHorizontal: Spacing.xl, paddingTop: Spacing.sm,
-    borderTopWidth: 1, borderTopColor: Colors.border,
-  },
-  controlBtn: {
-    alignItems: 'center', gap: 3, paddingVertical: 7, paddingHorizontal: 14, borderRadius: Radius.md,
-  },
+  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: Spacing.xl, paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border },
+  controlBtn: { alignItems: 'center', gap: 3, paddingVertical: 7, paddingHorizontal: 14, borderRadius: Radius.md },
   controlBtnActive: { backgroundColor: Colors.bgSurface },
   controlLabel: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium },
-  endBtn: {
-    width: 58, height: 58, borderRadius: 29, backgroundColor: Colors.danger,
-    alignItems: 'center', justifyContent: 'center', ...Shadow.danger,
-  },
+  endBtn: { width: 58, height: 58, borderRadius: 29, backgroundColor: Colors.danger, alignItems: 'center', justifyContent: 'center', ...Shadow.danger },
 });
