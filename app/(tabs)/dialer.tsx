@@ -26,7 +26,7 @@ import { parseVoiceCommand } from '../../services/voiceCommandService';
 import { aiDialerService, DialerResult } from '../../services/aiDialerService';
 import { callRecordsService } from '../../services/callRecordsService';
 
-type Tab = 'voice' | 'agent' | 'contacts';
+type Tab = 'voice' | 'pad' | 'agent' | 'contacts';
 
 const PAD_KEYS = [
   { digit: '1', sub: '' }, { digit: '2', sub: 'ABC' }, { digit: '3', sub: 'DEF' },
@@ -98,6 +98,105 @@ function MicButton({ isListening, onPress }: { isListening: boolean; onPress: ()
         <MaterialIcons name={isListening ? 'mic' : 'mic-none'} size={38} color="#fff" />
       </Animated.View>
     </Pressable>
+  );
+}
+
+// ─── DIAL PAD TAB ──────────────────────────────────────────────────────────
+function DialPadTab({ onDial }: { onDial: (num: string) => void }) {
+  const [digits, setDigits] = useState('');
+
+  const handleKey = (digit: string) => {
+    if (Platform.OS !== 'web') Vibration.vibrate(25);
+    setDigits(prev => prev.length < 16 ? prev + digit : prev);
+  };
+
+  const handleDelete = () => {
+    setDigits(prev => prev.slice(0, -1));
+  };
+
+  // Find matching contacts as digits are typed
+  const matchedContacts = digits.length >= 3
+    ? CONTACTS.filter(c => c.number.replace(/\D/g, '').includes(digits.replace(/\D/g, '')))
+    : [];
+
+  const formatDisplay = (d: string) => {
+    const clean = d.replace(/\D/g, '');
+    if (clean.length === 0) return '';
+    if (clean.length <= 3) return clean;
+    if (clean.length <= 6) return `(${clean.slice(0, 3)}) ${clean.slice(3)}`;
+    if (clean.length <= 10) return `(${clean.slice(0, 3)}) ${clean.slice(3, 6)}-${clean.slice(6)}`;
+    return `+${clean.slice(0, 1)} (${clean.slice(1, 4)}) ${clean.slice(4, 7)}-${clean.slice(7, 11)}`;
+  };
+
+  return (
+    <View style={styles.padTab}>
+      {/* Display */}
+      <View style={styles.padDisplay}>
+        <Text
+          style={[styles.padDigits, digits.length === 0 && styles.padDigitsPlaceholder]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {digits.length > 0 ? formatDisplay(digits) : 'Enter number...'}
+        </Text>
+        {digits.length > 0 && (
+          <TouchableOpacity
+            onPress={handleDelete}
+            onLongPress={() => setDigits('')}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="backspace" size={24} color={Colors.textSecondary} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Matched Contacts */}
+      {matchedContacts.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.padMatchRow}
+        >
+          {matchedContacts.slice(0, 5).map(c => (
+            <TouchableOpacity
+              key={c.id}
+              style={styles.padMatchChip}
+              onPress={() => setDigits(c.number.replace(/\D/g, ''))}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.padMatchDot, { backgroundColor: c.avatarColor }]} />
+              <Text style={styles.padMatchName} numberOfLines={1}>{c.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      {/* Key Pad */}
+      <View style={styles.padGrid}>
+        {PAD_KEYS.map(key => (
+          <TouchableOpacity
+            key={key.digit}
+            style={styles.padKey}
+            onPress={() => handleKey(key.digit)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.padKeyDigit}>{key.digit}</Text>
+            {key.sub ? <Text style={styles.padKeySub}>{key.sub}</Text> : null}
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Call Button */}
+      <TouchableOpacity
+        style={[styles.padCallBtn, !digits.trim() && styles.padCallBtnDisabled]}
+        onPress={() => { if (digits.trim()) onDial(digits.trim()); }}
+        disabled={!digits.trim()}
+        activeOpacity={0.85}
+      >
+        <MaterialIcons name="phone" size={28} color="#fff" />
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -602,6 +701,7 @@ export default function DialerScreen() {
 
   const TAB_DEFS: { key: Tab; icon: string; label: string }[] = [
     { key: 'voice', icon: 'mic', label: 'Voice' },
+    { key: 'pad', icon: 'dialpad', label: 'Keypad' },
     { key: 'agent', icon: 'support-agent', label: 'AI Agent' },
     { key: 'contacts', icon: 'people', label: 'Contacts' },
   ];
@@ -627,6 +727,12 @@ export default function DialerScreen() {
       </View>
 
       <View style={{ flex: 1 }}>
+        {tab === 'pad' && (
+          <ScrollView showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}>
+            <DialPadTab onDial={handleDial} />
+          </ScrollView>
+        )}
         {tab === 'voice' && (
           <ScrollView showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}>
@@ -679,11 +785,40 @@ const styles = StyleSheet.create({
     padding: 4, marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.border,
   },
   tabBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 10, borderRadius: Radius.md,
+    flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    gap: 2, paddingVertical: 8, borderRadius: Radius.md,
   },
+  // ── DIAL PAD ──
+  padTab: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, alignItems: 'center', gap: Spacing.md },
+  padDisplay: {
+    width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.bgCard, borderRadius: Radius.lg, paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md, borderWidth: 1, borderColor: Colors.borderStrong, minHeight: 68,
+  },
+  padDigits: { flex: 1, fontSize: 32, fontWeight: FontWeight.extrabold, color: Colors.text, letterSpacing: 2 },
+  padDigitsPlaceholder: { fontSize: 18, color: Colors.textMuted, fontWeight: FontWeight.medium, letterSpacing: 0 },
+  padMatchRow: { gap: Spacing.sm, paddingHorizontal: 2 },
+  padMatchChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: Colors.bgCard, borderRadius: Radius.full,
+    paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: Colors.border, maxWidth: 140,
+  },
+  padMatchDot: { width: 8, height: 8, borderRadius: 4 },
+  padMatchName: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.text },
+  padGrid: { flexDirection: 'row', flexWrap: 'wrap', width: '100%', gap: 0 },
+  padKey: {
+    width: '33.33%', height: 72, alignItems: 'center', justifyContent: 'center',
+    borderRadius: Radius.md, gap: 1,
+  },
+  padKeyDigit: { fontSize: 28, fontWeight: FontWeight.bold, color: Colors.text, lineHeight: 34 },
+  padKeySub: { fontSize: 10, fontWeight: FontWeight.semibold, color: Colors.textMuted, letterSpacing: 2, lineHeight: 13 },
+  padCallBtn: {
+    width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.safe,
+    alignItems: 'center', justifyContent: 'center', ...Shadow.primary,
+  },
+  padCallBtnDisabled: { backgroundColor: Colors.bgSurface, shadowOpacity: 0 },
   tabBtnActive: { backgroundColor: Colors.primaryGlow },
-  tabLabel: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.textMuted },
+  tabLabel: { fontSize: 10, fontWeight: FontWeight.medium, color: Colors.textMuted },
   tabLabelActive: { color: Colors.primary, fontWeight: FontWeight.bold },
 
   // ── VOICE TAB ──
