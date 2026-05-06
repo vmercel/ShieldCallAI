@@ -1,17 +1,20 @@
 /**
- * useGhostMode Hook
- * Manages the complete Ghost Mode AI session:
- * - GhostAIResponder finite-state conversation engine
- * - SENTINEL NLP threat analysis on every caller utterance
- * - AcousticSentinel microphone monitoring
- * - expo-speech TTS synthesis
- * - Expose Mode state machine
+ * useGhostMode Hook — UPGRADED with Real OnSpace AI
+ *
+ * Ghost Mode now uses the Ghost AI Edge Function (Gemini 3 Flash)
+ * instead of the finite-state machine. Every caller utterance is:
+ * 1. Analyzed by SENTINEL™ NLP engine for threat scoring
+ * 2. Sent to OnSpace AI with full context (messages, threat level, flags)
+ * 3. Spoken aloud via expo-speech TTS
+ * 4. Tracked for intelligence gathering
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { GhostAIResponder, GhostMessage, GhostIntelligence } from '../services/ghostAIResponder';
+import * as Speech from 'expo-speech';
+import { GhostMessage, GhostIntelligence } from '../services/ghostAIResponder';
 import { SentinelEngine } from '../services/sentinelEngine';
 import { AcousticSentinel } from '../services/acousticSentinel';
+import { ghostAIService } from '../services/ghostAIService';
 import { ThreatLevel } from '../constants/mockData';
 
 export interface GhostModeState {
@@ -62,64 +65,113 @@ const INITIAL_STATE: GhostModeState = {
   scamType: null,
 };
 
-export function useGhostMode(personaName: string) {
+async function speakText(text: string, rate = 0.9): Promise<void> {
+  return new Promise(resolve => {
+    Speech.stop();
+    Speech.speak(text, {
+      language: 'en-US',
+      rate,
+      pitch: 1.0,
+      onDone: resolve,
+      onError: resolve,
+    });
+  });
+}
+
+export function useGhostMode(personaName: string, userName = 'the account holder') {
   const [state, setState] = useState<GhostModeState>(INITIAL_STATE);
-  const responderRef = useRef(new GhostAIResponder());
   const sentinelRef = useRef(new SentinelEngine());
   const acousticRef = useRef(new AcousticSentinel());
   const durationRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(Date.now());
 
-  // ─── INITIALIZE ────────────────────────────────────────────────────────────
+  // Mutable refs for AI context (avoid stale closures)
+  const messagesRef = useRef<GhostMessage[]>([]);
+  const intelligenceRef = useRef<GhostIntelligence>(INITIAL_STATE.intelligence);
+  const isExposeModeRef = useRef(false);
+  const deepfakeRef = useRef(0);
 
+  // ─── INITIALIZE ────────────────────────────────────────────────────────────
   const initialize = useCallback(async () => {
-    responderRef.current.reset();
     sentinelRef.current.reset();
     acousticRef.current.reset();
+    messagesRef.current = [];
+    isExposeModeRef.current = false;
     startTimeRef.current = Date.now();
-
-    responderRef.current.setPersona(personaName);
 
     // Duration counter
     durationRef.current = setInterval(() => {
+      const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
+      intelligenceRef.current = {
+        ...intelligenceRef.current,
+        timeWasted: elapsed,
+      };
       setState(prev => ({
         ...prev,
-        duration: Math.round((Date.now() - startTimeRef.current) / 1000),
-        intelligence: responderRef.current.getIntelligence(),
+        duration: elapsed,
+        intelligence: { ...intelligenceRef.current },
       }));
     }, 1000);
 
-    // Start acoustic
+    // Start acoustic monitoring
     const micGranted = await acousticRef.current.requestPermission();
     setState(prev => ({ ...prev, hasMicPermission: micGranted }));
 
     if (micGranted) {
       await acousticRef.current.startMonitoring(snapshot => {
+        const deepfake = acousticRef.current.getSession().deepfakeConfidence;
+        deepfakeRef.current = deepfake;
         setState(prev => ({
           ...prev,
           acousticStress: snapshot.acousticStressScore,
           amplitude: snapshot.normalizedAmplitude,
-          deepfakeConfidence: acousticRef.current.getSession().deepfakeConfidence,
+          deepfakeConfidence: deepfake,
         }));
       });
     }
 
-    // AI sends opening greeting
-    setState(prev => ({ ...prev, isAISpeaking: true }));
-    await responderRef.current.greet(msg => {
-      setState(prev => ({ ...prev, messages: [...prev.messages, msg] }));
-    });
-    setState(prev => ({ ...prev, isAISpeaking: false }));
+    // AI opening greeting
+    await sendAIGreeting();
   }, [personaName]);
 
-  // ─── PROCESS CALLER INPUT ──────────────────────────────────────────────────
+  const sendAIGreeting = useCallback(async () => {
+    setState(prev => ({ ...prev, isAISpeaking: true }));
 
+    const greetingText = `Hello, this is ${personaName}, a communications assistant calling on behalf of ${userName}. How may I direct your call?`;
+
+    const greetingMsg: GhostMessage = {
+      id: `ai-${Date.now()}`,
+      role: 'ai',
+      text: greetingText,
+      state: 'greeting',
+      timestamp: Date.now(),
+      isSpeaking: true,
+    };
+
+    messagesRef.current = [greetingMsg];
+    setState(prev => ({ ...prev, messages: [greetingMsg], isAISpeaking: true }));
+
+    await speakText(greetingText);
+    setState(prev => ({ ...prev, isAISpeaking: false }));
+  }, [personaName, userName]);
+
+  // ─── PROCESS CALLER INPUT (Real AI) ───────────────────────────────────────
   const submitCallerText = useCallback(async (text: string) => {
     if (!text.trim() || state.isProcessing) return;
 
-    setState(prev => ({ ...prev, isProcessing: true, inputText: '', isAISpeaking: true }));
+    setState(prev => ({ ...prev, isProcessing: true, inputText: '' }));
 
-    // SENTINEL analysis on caller text
+    // Add caller message
+    const callerMsg: GhostMessage = {
+      id: `caller-${Date.now()}`,
+      role: 'caller',
+      text,
+      timestamp: Date.now(),
+    };
+    messagesRef.current = [...messagesRef.current, callerMsg];
+    setState(prev => ({ ...prev, messages: [...messagesRef.current] }));
+
+    // SENTINEL™ analysis
     const window = sentinelRef.current.ingestSegment(text);
     const analysis = sentinelRef.current.analyzeConversation();
 
@@ -133,41 +185,77 @@ export function useGhostMode(personaName: string) {
       scamType: analysis.scamType,
     }));
 
-    // GhostAI processes and responds via TTS
-    await responderRef.current.processCallerUtterance(text, msg => {
-      setState(prev => ({
-        ...prev,
-        messages: [...prev.messages, ...responderRef.current.getMessages().slice(-2)],
-        intelligence: responderRef.current.getIntelligence(),
-      }));
+    // Update intelligence
+    if (text.match(/payment|gift card|wire|bitcoin|pay/i)) {
+      intelligenceRef.current = { ...intelligenceRef.current, paymentMentioned: true };
+    }
+    if (text.match(/\b(i am|this is|officer|agent|from)\b/i)) {
+      const match = text.match(/\b(i am|this is|officer|agent|from)\s+([A-Za-z\s]{2,30})/i);
+      if (match?.[2]) {
+        intelligenceRef.current = {
+          ...intelligenceRef.current,
+          callerClaimedIdentity: match[2].trim(),
+        };
+      }
+    }
+
+    // Call OnSpace AI Ghost responder
+    setState(prev => ({ ...prev, isAISpeaking: true }));
+
+    const { reply, error } = await ghostAIService.getResponse({
+      messages: messagesRef.current.map(m => ({ role: m.role, text: m.text })),
+      personaName,
+      userName,
+      threatScore: window.score,
+      threatLevel: window.level,
+      threatFlags: window.flags,
+      isExposeMode: isExposeModeRef.current,
+      deepfakeConfidence: deepfakeRef.current,
     });
 
-    // Sync full message list
+    const responseText = reply || 'I understand. Could you please elaborate on that?';
+
+    const aiMsg: GhostMessage = {
+      id: `ai-${Date.now()}`,
+      role: 'ai',
+      text: responseText,
+      state: isExposeModeRef.current ? 'expose_mode' : 'identity_verification',
+      timestamp: Date.now(),
+      isSpeaking: true,
+    };
+
+    messagesRef.current = [...messagesRef.current, aiMsg];
     setState(prev => ({
       ...prev,
-      messages: responderRef.current.getMessages(),
+      messages: [...messagesRef.current],
+      intelligence: { ...intelligenceRef.current },
+    }));
+
+    // Speak response
+    await speakText(responseText);
+
+    setState(prev => ({
+      ...prev,
       isProcessing: false,
       isAISpeaking: false,
     }));
-  }, [state.isProcessing]);
+  }, [state.isProcessing, personaName, userName]);
 
-  // ─── EXPOSE MODE ──────────────────────────────────────────────────────────
-
+  // ─── EXPOSE MODE ─────────────────────────────────────────────────────────
   const enableExposeMode = useCallback(() => {
-    responderRef.current.enableExposeMode();
+    isExposeModeRef.current = true;
     setState(prev => ({ ...prev, isExposeMode: true }));
   }, []);
 
   // ─── END SESSION ─────────────────────────────────────────────────────────
-
   const endSession = useCallback(async () => {
     durationRef.current && clearInterval(durationRef.current);
     await acousticRef.current.stopMonitoring();
-    await responderRef.current.stopSpeaking();
+    Speech.stop();
     setState(prev => ({ ...prev, isAISpeaking: false }));
     return {
-      messages: responderRef.current.getMessages(),
-      intelligence: responderRef.current.getIntelligence(),
+      messages: messagesRef.current,
+      intelligence: intelligenceRef.current,
       acousticSession: acousticRef.current.getSession(),
     };
   }, []);
@@ -181,7 +269,7 @@ export function useGhostMode(personaName: string) {
     return () => {
       durationRef.current && clearInterval(durationRef.current);
       acousticRef.current.stopMonitoring();
-      responderRef.current.stopSpeaking();
+      Speech.stop();
     };
   }, []);
 

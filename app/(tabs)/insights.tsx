@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../constants/theme';
 import { SCAM_PATTERNS, ScamCategory } from '../../constants/scamPatterns';
 import { SentinelEngine } from '../../services/sentinelEngine';
-import { MOCK_STATS, MOCK_CALLS } from '../../constants/mockData';
-import { Share } from 'react-native';
+import { useCallRecords } from '../../hooks/useCallRecords';
+import { useCommunityThreats } from '../../hooks/useCommunityThreats';
 
-const MONTH = 'May 2026';
+const MONTH = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
 
 const CATEGORY_ICONS: Partial<Record<ScamCategory, string>> = {
   government_impersonation: 'account-balance',
@@ -29,27 +29,37 @@ const CATEGORY_ICONS: Partial<Record<ScamCategory, string>> = {
 
 export default function InsightsScreen() {
   const insets = useSafeAreaInsets();
+  const { stats, calls, loading } = useCallRecords();
+  const { threats } = useCommunityThreats();
   const [expandedCategory, setExpandedCategory] = useState<ScamCategory | null>(null);
 
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `CALLSHIELD SENTINEL™ protected me from ${MOCK_STATS.scamsBlocked} scam attempts this month — estimated $${MOCK_STATS.estimatedSavings.toLocaleString()} in losses prevented. callshield.ai`,
+        message: `CALLSHIELD SENTINEL™ protected me from ${stats.scamsBlocked} scam attempts this month — estimated $${stats.estimatedSavings.toLocaleString()} in losses prevented. callshield.ai`,
       });
     } catch {}
   };
 
-  const safeCount = MOCK_CALLS.filter(c => c.threatLevel === 'safe').length;
-  const dangerCount = MOCK_CALLS.filter(c => c.threatLevel === 'danger').length;
-  const warnCount = MOCK_CALLS.filter(c => c.threatLevel === 'warning').length;
-  const total = MOCK_CALLS.length;
+  const safeCount = calls.filter(c => c.threat_level === 'safe').length;
+  const dangerCount = calls.filter(c => c.threat_level === 'danger').length;
+  const warnCount = calls.filter(c => c.threat_level === 'warning').length;
+  const total = calls.length;
 
-  // Group patterns by category for taxonomy explorer
   const categoryCounts: Partial<Record<ScamCategory, number>> = {};
   SCAM_PATTERNS.forEach(p => {
     categoryCounts[p.category] = (categoryCounts[p.category] || 0) + 1;
   });
   const categories = Object.entries(categoryCounts) as [ScamCategory, number][];
+
+  if (loading) {
+    return (
+      <View style={[styles.loadingWrap, { paddingTop: insets.top }]}>
+        <ActivityIndicator color={Colors.primary} size="large" />
+        <Text style={styles.loadingText}>Loading insights...</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -79,9 +89,9 @@ export default function InsightsScreen() {
         <View style={styles.reportDivider} />
         <View style={styles.reportStats}>
           {[
-            { num: MOCK_STATS.scamsBlocked, label: 'Scams\nBlocked', color: Colors.danger },
-            { num: `$${(MOCK_STATS.estimatedSavings / 1000).toFixed(1)}k`, label: 'Est.\nSavings', color: Colors.safe },
-            { num: MOCK_STATS.ghostModeCalls, label: 'Ghost\nCalls', color: Colors.primary },
+            { num: stats.scamsBlocked, label: 'Scams\nBlocked', color: Colors.danger },
+            { num: `$${stats.estimatedSavings >= 1000 ? (stats.estimatedSavings / 1000).toFixed(1) + 'k' : stats.estimatedSavings}`, label: 'Est.\nSavings', color: Colors.safe },
+            { num: stats.ghostModeCalls, label: 'Ghost\nCalls', color: Colors.primary },
           ].map((s, i) => (
             <React.Fragment key={i}>
               {i > 0 && <View style={styles.statDiv} />}
@@ -104,13 +114,13 @@ export default function InsightsScreen() {
           { label: 'Linguistic Pattern Coverage', value: 22, max: 22, unit: 'categories', color: Colors.primary },
           { label: 'Pattern Markers Active', value: SCAM_PATTERNS.length, max: SCAM_PATTERNS.length, unit: 'markers', color: Colors.safe },
           { label: 'Trajectory Multiplier', value: 4.0, max: 5, unit: '×', color: Colors.warning },
-          { label: 'Acoustic Analysis Windows', value: 60, max: 60, unit: 'samples/6s', color: Colors.accent },
+          { label: 'AI Ghost Sessions', value: stats.ghostModeCalls, max: Math.max(stats.ghostModeCalls, 10), unit: 'sessions', color: Colors.accent },
         ].map(item => (
           <View key={item.label} style={styles.capRow}>
             <Text style={styles.capLabel}>{item.label}</Text>
             <View style={styles.capRight}>
               <View style={styles.capTrack}>
-                <View style={[styles.capFill, { width: `${(item.value / item.max) * 100}%`, backgroundColor: item.color }]} />
+                <View style={[styles.capFill, { width: `${Math.max(4, (item.value / item.max) * 100)}%`, backgroundColor: item.color }]} />
               </View>
               <Text style={[styles.capValue, { color: item.color }]}>{item.value} {item.unit}</Text>
             </View>
@@ -120,30 +130,38 @@ export default function InsightsScreen() {
 
       {/* Call Breakdown */}
       <Text style={styles.sectionTitle}>Call Breakdown</Text>
-      <View style={styles.breakdownCard}>
-        <View style={styles.barChart}>
-          {[
-            { label: 'Safe', count: safeCount, color: Colors.safe },
-            { label: 'Suspicious', count: warnCount, color: Colors.warning },
-            { label: 'High Risk', count: dangerCount, color: Colors.danger },
-          ].map(item => (
-            <View key={item.label} style={styles.barItem}>
-              <View style={styles.barTrack}>
-                <View style={[styles.barFill, {
-                  height: `${Math.max(4, (item.count / total) * 100)}%`,
-                  backgroundColor: item.color,
-                }]} />
+      {total === 0 ? (
+        <View style={styles.emptyCard}>
+          <MaterialIcons name="phone-missed" size={32} color={Colors.textMuted} />
+          <Text style={styles.emptyText}>No calls analyzed yet</Text>
+          <Text style={styles.emptySubText}>Make or receive calls through CALLSHIELD to see your breakdown</Text>
+        </View>
+      ) : (
+        <View style={styles.breakdownCard}>
+          <View style={styles.barChart}>
+            {[
+              { label: 'Safe', count: safeCount, color: Colors.safe },
+              { label: 'Suspicious', count: warnCount, color: Colors.warning },
+              { label: 'High Risk', count: dangerCount, color: Colors.danger },
+            ].map(item => (
+              <View key={item.label} style={styles.barItem}>
+                <View style={styles.barTrack}>
+                  <View style={[styles.barFill, {
+                    height: `${Math.max(4, (item.count / total) * 100)}%`,
+                    backgroundColor: item.color,
+                  }]} />
+                </View>
+                <Text style={[styles.barNum, { color: item.color }]}>{item.count}</Text>
+                <Text style={styles.barLabel}>{item.label}</Text>
               </View>
-              <Text style={[styles.barNum, { color: item.color }]}>{item.count}</Text>
-              <Text style={styles.barLabel}>{item.label}</Text>
-            </View>
-          ))}
+            ))}
+          </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total Calls Analyzed</Text>
+            <Text style={styles.totalNum}>{total}</Text>
+          </View>
         </View>
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total Calls Analyzed</Text>
-          <Text style={styles.totalNum}>{total}</Text>
-        </View>
-      </View>
+      )}
 
       {/* Threat Taxonomy Explorer */}
       <Text style={styles.sectionTitle}>SENTINEL™ Threat Taxonomy</Text>
@@ -165,10 +183,7 @@ export default function InsightsScreen() {
               </View>
               <Text style={styles.taxName}>{cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</Text>
               <Text style={styles.taxCount}>{count} marker{count > 1 ? 's' : ''}</Text>
-              <MaterialIcons
-                name={isExpanded ? 'expand-less' : 'expand-more'}
-                size={18} color={Colors.textMuted}
-              />
+              <MaterialIcons name={isExpanded ? 'expand-less' : 'expand-more'} size={18} color={Colors.textMuted} />
             </View>
             {isExpanded && patternsInCat.map((p, i) => (
               <View key={i} style={styles.taxDetail}>
@@ -192,23 +207,48 @@ export default function InsightsScreen() {
         );
       })}
 
-      {/* Top Scam Types */}
-      <Text style={styles.sectionTitle}>Top Scam Types Targeting You</Text>
-      {MOCK_STATS.topScamTypes.map((item, i) => (
-        <View key={i} style={styles.scamRow}>
-          <View style={styles.scamRank}>
-            <Text style={styles.scamRankText}>{i + 1}</Text>
-          </View>
-          <Text style={styles.scamType}>{item.type}</Text>
-          <View style={styles.scamTrack}>
-            <View style={[styles.scamFill, {
-              width: `${(item.count / MOCK_STATS.scamsBlocked) * 100}%`,
-              backgroundColor: i === 0 ? Colors.danger : i === 1 ? Colors.warning : Colors.primary,
-            }]} />
-          </View>
-          <Text style={styles.scamCount}>{item.count}</Text>
-        </View>
-      ))}
+      {/* Top Scam Types from Real Data */}
+      {stats.topScamTypes.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Top Scam Types Detected</Text>
+          {stats.topScamTypes.map((item, i) => (
+            <View key={i} style={styles.scamRow}>
+              <View style={styles.scamRank}>
+                <Text style={styles.scamRankText}>{i + 1}</Text>
+              </View>
+              <Text style={styles.scamType}>{item.type}</Text>
+              <View style={styles.scamTrack}>
+                <View style={[styles.scamFill, {
+                  width: `${(item.count / Math.max(...stats.topScamTypes.map(s => s.count))) * 100}%`,
+                  backgroundColor: i === 0 ? Colors.danger : i === 1 ? Colors.warning : Colors.primary,
+                }]} />
+              </View>
+              <Text style={styles.scamCount}>{item.count}</Text>
+            </View>
+          ))}
+        </>
+      )}
+
+      {/* Community Threats from DB */}
+      {threats.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Live Community Threat Feed</Text>
+          {threats.slice(0, 4).map((t, i) => (
+            <View key={t.id} style={styles.threatRow}>
+              <View style={styles.threatRank}>
+                <Text style={styles.scamRankText}>{i + 1}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.scamType}>{t.scam_type || 'Unknown Scam'}</Text>
+                <Text style={styles.threatNum}>{t.phone_number} · {t.region}</Text>
+              </View>
+              <View style={styles.threatBadge}>
+                <Text style={styles.alertCount}>{t.report_count.toLocaleString()}</Text>
+              </View>
+            </View>
+          ))}
+        </>
+      )}
 
       {/* Community Impact */}
       <View style={styles.communityCard}>
@@ -217,7 +257,7 @@ export default function InsightsScreen() {
           <Text style={styles.communityTitle}>Community Network Effect</Text>
           <Text style={styles.communityText}>
             Your SENTINEL™ threat detections are anonymously contributed to{' '}
-            <Text style={{ color: Colors.primary, fontWeight: FontWeight.bold }}>2.4M CALLSHIELD users</Text>
+            <Text style={{ color: Colors.primary, fontWeight: FontWeight.bold }}>the CALLSHIELD network</Text>
             , neutralizing scam campaigns before they reach others.
           </Text>
         </View>
@@ -234,6 +274,14 @@ const styles = StyleSheet.create({
   month: { fontSize: FontSize.sm, color: Colors.textSecondary },
   sectionTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.text, marginBottom: Spacing.xs, marginTop: Spacing.lg },
   taxSubtitle: { fontSize: FontSize.xs, color: Colors.textMuted, marginBottom: Spacing.sm },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, backgroundColor: Colors.bg },
+  loadingText: { fontSize: FontSize.sm, color: Colors.textSecondary },
+  emptyCard: {
+    alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg, padding: Spacing.xl, borderWidth: 1, borderColor: Colors.border,
+  },
+  emptyText: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.textSecondary },
+  emptySubText: { fontSize: FontSize.sm, color: Colors.textMuted, textAlign: 'center' },
 
   reportCard: {
     backgroundColor: Colors.bgCard, borderRadius: Radius.xl, padding: Spacing.lg,
@@ -312,6 +360,15 @@ const styles = StyleSheet.create({
   scamTrack: { flex: 1, height: 6, backgroundColor: Colors.bgCard, borderRadius: 3, overflow: 'hidden' },
   scamFill: { height: '100%', borderRadius: 3 },
   scamCount: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textSecondary, width: 20, textAlign: 'right' },
+
+  threatRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
+  threatRank: { width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.dangerGlow, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.danger + '44' },
+  threatNum: { fontSize: FontSize.xs, color: Colors.textSecondary },
+  threatBadge: {
+    backgroundColor: Colors.dangerGlow, borderRadius: Radius.full,
+    paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: Colors.danger + '44',
+  },
+  alertCount: { fontSize: FontSize.xs, color: Colors.danger, fontWeight: FontWeight.bold },
 
   communityCard: {
     flexDirection: 'row', gap: Spacing.md, alignItems: 'flex-start',

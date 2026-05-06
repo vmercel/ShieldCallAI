@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,37 +9,35 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../../constants/theme';
 import { useApp } from '../../contexts/AppContext';
-import { MOCK_CALLS, MOCK_SCAM_ALERTS, MOCK_STATS } from '../../constants/mockData';
-import { ThreatService } from '../../services/threatService';
+import { useCallRecords } from '../../hooks/useCallRecords';
+import { useCommunityThreats } from '../../hooks/useCommunityThreats';
 import { SentinelEngine } from '../../services/sentinelEngine';
 
 // ─── Live Threat Ticker ─────────────────────────────────────────────────────
-function LiveThreatTicker() {
+function LiveThreatTicker({ threats }: { threats: { scam_type?: string; report_count: number; region: string; phone_number: string }[] }) {
   const [index, setIndex] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  const alerts = MOCK_SCAM_ALERTS;
-
   useEffect(() => {
+    if (threats.length < 2) return;
     const interval = setInterval(() => {
-      Animated.sequence([
-        Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
-      ]).start(() => {
-        setIndex(i => (i + 1) % alerts.length);
+      Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
+        setIndex(i => (i + 1) % threats.length);
         Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
       });
     }, 3200);
     return () => clearInterval(interval);
-  }, []);
+  }, [threats.length]);
 
-  const alert = alerts[index];
+  if (threats.length === 0) return null;
+  const alert = threats[index] || threats[0];
 
   return (
     <Animated.View style={[styles.ticker, { opacity: fadeAnim }]}>
       <View style={styles.tickerDot} />
       <Text style={styles.tickerText} numberOfLines={1}>
-        <Text style={{ color: Colors.danger, fontWeight: FontWeight.bold }}>{alert.scamType} </Text>
-        — {alert.reportCount.toLocaleString()} reports · {alert.region}
+        <Text style={{ color: Colors.danger, fontWeight: FontWeight.bold }}>{alert.scam_type || 'Scam'} </Text>
+        — {alert.report_count.toLocaleString()} reports · {alert.region}
       </Text>
     </Animated.View>
   );
@@ -60,9 +59,7 @@ function SentinelDemo() {
     'You need to go buy Google Play gift cards immediately.',
   ];
 
-  useEffect(() => {
-    engine.reset();
-  }, []);
+  useEffect(() => { engine.reset(); }, []);
 
   const handleNext = () => {
     if (demoIndex >= DEMO_PHRASES.length) return;
@@ -135,9 +132,10 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { ghostModeEnabled, personaName, setGhostMode } = useApp();
   const router = useRouter();
+  const { calls, stats, loading } = useCallRecords();
+  const { threats } = useCommunityThreats();
 
-  const recentDanger = MOCK_CALLS.filter(c => c.threatLevel === 'danger').length;
-  const totalToday = MOCK_CALLS.filter(c => Date.now() - c.timestamp.getTime() < 86400000).length;
+  const THREAT_COLORS = { safe: Colors.safe, warning: Colors.warning, danger: Colors.danger };
 
   return (
     <ScrollView
@@ -157,8 +155,8 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Live Threat Ticker */}
-      <LiveThreatTicker />
+      {/* Live Threat Ticker — Real Data */}
+      <LiveThreatTicker threats={threats} />
 
       {/* Shield Hero */}
       <View style={styles.shieldCard}>
@@ -170,11 +168,17 @@ export default function HomeScreen() {
         />
         <View style={styles.shieldOverlay}>
           <Text style={styles.shieldTitle}>AI Protection Active</Text>
-          <Text style={styles.shieldSub}>{MOCK_STATS.scamsBlocked} threats blocked this month</Text>
-          <View style={styles.shieldSavingsRow}>
-            <MaterialIcons name="savings" size={14} color={Colors.safe} />
-            <Text style={styles.shieldSavings}>${MOCK_STATS.estimatedSavings.toLocaleString()} estimated savings</Text>
-          </View>
+          {loading ? (
+            <ActivityIndicator color={Colors.safe} size="small" />
+          ) : (
+            <>
+              <Text style={styles.shieldSub}>{stats.scamsBlocked} threats blocked this month</Text>
+              <View style={styles.shieldSavingsRow}>
+                <MaterialIcons name="savings" size={14} color={Colors.safe} />
+                <Text style={styles.shieldSavings}>${stats.estimatedSavings.toLocaleString()} estimated savings</Text>
+              </View>
+            </>
+          )}
         </View>
       </View>
 
@@ -195,6 +199,7 @@ export default function HomeScreen() {
           <Text style={styles.quickTextLight}>Ghost Mode</Text>
         </Pressable>
       </View>
+
       {/* Incoming Call Demo */}
       <Pressable
         style={({ pressed }) => [styles.incomingDemo, pressed && { opacity: 0.85 }]}
@@ -223,7 +228,7 @@ export default function HomeScreen() {
             <Text style={styles.ghostTitle}>Ghost Mode</Text>
             <Text style={styles.ghostSub}>
               {ghostModeEnabled
-                ? `"${personaName}" answers + SENTINEL™ analyzes in real-time`
+                ? `"${personaName}" answers + SENTINEL™ + OnSpace AI responds in real-time`
                 : 'AI answers suspicious calls while you listen silently'}
             </Text>
           </View>
@@ -237,75 +242,101 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Stats */}
-      <Text style={styles.sectionTitle}>Today's Shield Report</Text>
-      <View style={styles.statsRow}>
-        {[
-          { icon: 'shield', val: MOCK_STATS.scamsBlocked, label: 'Threats\nBlocked', color: Colors.safe, glow: Colors.safeGlow },
-          { icon: 'hearing', val: MOCK_STATS.ghostModeCalls, label: 'Ghost\nHandled', color: Colors.primary, glow: Colors.primaryGlow },
-          { icon: 'call', val: totalToday, label: 'Total\nCalls', color: Colors.warning, glow: Colors.warningGlow },
-        ].map(item => (
-          <View key={item.label} style={[styles.statCard, { backgroundColor: item.glow, borderColor: item.color + '44' }]}>
-            <MaterialIcons name={item.icon as any} size={26} color={item.color} />
-            <Text style={[styles.statNum, { color: item.color }]}>{item.val}</Text>
-            <Text style={styles.statLabel}>{item.label}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Community Feed */}
-      <View style={styles.sectionRow}>
-        <Text style={styles.sectionTitle}>Live Threat Feed</Text>
-        <TouchableOpacity onPress={() => router.push('/calls')}>
-          <Text style={styles.seeAll}>See All</Text>
-        </TouchableOpacity>
-      </View>
-      {MOCK_SCAM_ALERTS.slice(0, 3).map(alert => (
-        <View key={alert.id} style={styles.alertCard}>
-          <View style={styles.alertDot} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.alertType}>{alert.scamType}</Text>
-            <Text style={styles.alertNum}>{alert.number} · {alert.region}</Text>
-          </View>
-          <View style={styles.alertBadge}>
-            <Text style={styles.alertCount}>{alert.reportCount.toLocaleString()}</Text>
-          </View>
+      {/* Real Stats */}
+      <Text style={styles.sectionTitle}>Shield Report</Text>
+      {loading ? (
+        <View style={styles.statsLoading}>
+          <ActivityIndicator color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading stats...</Text>
         </View>
-      ))}
+      ) : (
+        <View style={styles.statsRow}>
+          {[
+            { icon: 'shield', val: stats.scamsBlocked, label: 'Threats\nBlocked', color: Colors.safe, glow: Colors.safeGlow },
+            { icon: 'hearing', val: stats.ghostModeCalls, label: 'Ghost\nHandled', color: Colors.primary, glow: Colors.primaryGlow },
+            { icon: 'call', val: stats.totalCalls, label: 'Total\nCalls', color: Colors.warning, glow: Colors.warningGlow },
+          ].map(item => (
+            <View key={item.label} style={[styles.statCard, { backgroundColor: item.glow, borderColor: item.color + '44' }]}>
+              <MaterialIcons name={item.icon as any} size={26} color={item.color} />
+              <Text style={[styles.statNum, { color: item.color }]}>{item.val}</Text>
+              <Text style={styles.statLabel}>{item.label}</Text>
+            </View>
+          ))}
+        </View>
+      )}
 
-      {/* Recent Calls */}
+      {/* Community Threat Feed — Real Data */}
+      {threats.length > 0 && (
+        <>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>Live Threat Feed</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/insights')}>
+              <Text style={styles.seeAll}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          {threats.slice(0, 3).map(alert => (
+            <View key={alert.id} style={styles.alertCard}>
+              <View style={styles.alertDot} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.alertType}>{alert.scam_type || 'Suspicious Activity'}</Text>
+                <Text style={styles.alertNum}>{alert.phone_number} · {alert.region}</Text>
+              </View>
+              <View style={styles.alertBadge}>
+                <Text style={styles.alertCount}>{alert.report_count.toLocaleString()}</Text>
+              </View>
+            </View>
+          ))}
+        </>
+      )}
+
+      {/* Recent Calls — Real Data */}
       <View style={styles.sectionRow}>
         <Text style={styles.sectionTitle}>Recent Calls</Text>
-        <TouchableOpacity onPress={() => router.push('/calls')}>
+        <TouchableOpacity onPress={() => router.push('/(tabs)/calls')}>
           <Text style={styles.seeAll}>See All</Text>
         </TouchableOpacity>
       </View>
-      {MOCK_CALLS.slice(0, 3).map(call => {
-        const color = ThreatService.getThreatColor(call.threatLevel);
-        const minsAgo = Math.round(Math.abs(Date.now() - call.timestamp.getTime()) / 60000);
-        return (
-          <TouchableOpacity
-            key={call.id}
-            style={styles.callCard}
-            onPress={() => router.push({ pathname: '/call-detail', params: { id: call.id } })}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.callAvatar, { borderColor: color }]}>
-              <MaterialIcons name={call.ghostHandled ? 'hearing' : 'person'} size={20} color={color} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.callName}>{call.callerName}</Text>
-              <Text style={styles.callMeta}>
-                {minsAgo < 60 ? `${minsAgo}m ago` : `${Math.round(minsAgo / 60)}h ago`}
-                {call.ghostHandled ? '  ·  Ghost handled' : ''}
-              </Text>
-            </View>
-            <View style={[styles.threatTag, { backgroundColor: color + '22', borderColor: color + '55' }]}>
-              <Text style={[styles.threatTagText, { color }]}>{ThreatService.getThreatLabel(call.threatLevel)}</Text>
-            </View>
-          </TouchableOpacity>
-        );
-      })}
+      {loading ? (
+        <View style={styles.statsLoading}>
+          <ActivityIndicator color={Colors.primary} size="small" />
+        </View>
+      ) : calls.length === 0 ? (
+        <View style={styles.noCallsCard}>
+          <MaterialIcons name="phone-missed" size={28} color={Colors.textMuted} />
+          <Text style={styles.noCallsText}>No calls analyzed yet</Text>
+          <Text style={styles.noCallsSub}>Calls analyzed by SENTINEL™ will appear here</Text>
+        </View>
+      ) : (
+        calls.slice(0, 3).map(call => {
+          const color = THREAT_COLORS[call.threat_level];
+          const startedAt = new Date(call.started_at);
+          const minsAgo = Math.round(Math.abs(Date.now() - startedAt.getTime()) / 60000);
+          return (
+            <TouchableOpacity
+              key={call.id}
+              style={styles.callCard}
+              onPress={() => router.push({ pathname: '/call-detail', params: { id: call.id } })}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.callAvatar, { borderColor: color }]}>
+                <MaterialIcons name={call.ghost_handled ? 'hearing' : 'person'} size={20} color={color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.callName}>{call.caller_name}</Text>
+                <Text style={styles.callMeta}>
+                  {minsAgo < 60 ? `${minsAgo}m ago` : `${Math.round(minsAgo / 60)}h ago`}
+                  {call.ghost_handled ? '  ·  Ghost handled' : ''}
+                </Text>
+              </View>
+              <View style={[styles.threatTag, { backgroundColor: color + '22', borderColor: color + '55' }]}>
+                <Text style={[styles.threatTagText, { color }]}>
+                  {call.threat_level === 'danger' ? 'HIGH RISK' : call.threat_level === 'warning' ? 'SUSPICIOUS' : 'SAFE'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })
+      )}
     </ScrollView>
   );
 }
@@ -358,7 +389,6 @@ const styles = StyleSheet.create({
   quickTextDark: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textInverse },
   quickTextLight: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.primary },
 
-  // SENTINEL Demo
   demoCard: {
     backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md,
     borderWidth: 1.5, borderColor: Colors.borderStrong, marginBottom: Spacing.md, gap: Spacing.sm,
@@ -422,6 +452,9 @@ const styles = StyleSheet.create({
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
   seeAll: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.medium },
 
+  statsLoading: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.md },
+  loadingText: { fontSize: FontSize.sm, color: Colors.textSecondary },
+
   statsRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg },
   statCard: {
     flex: 1, borderRadius: Radius.lg, padding: Spacing.md,
@@ -443,6 +476,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: Colors.danger + '44',
   },
   alertCount: { fontSize: FontSize.xs, color: Colors.danger, fontWeight: FontWeight.bold },
+
+  noCallsCard: {
+    alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg, padding: Spacing.xl, borderWidth: 1, borderColor: Colors.border,
+    marginBottom: Spacing.md,
+  },
+  noCallsText: { fontSize: FontSize.md, color: Colors.textSecondary, fontWeight: FontWeight.semibold },
+  noCallsSub: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center' },
 
   callCard: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,

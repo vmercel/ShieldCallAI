@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../constants/theme';
-import { MOCK_CALLS, CallRecord, ThreatLevel } from '../../constants/mockData';
-import { ThreatService } from '../../services/threatService';
+import { CallRecord } from '../../services/callRecordsService';
+import { useCallRecords } from '../../hooks/useCallRecords';
 
 type Filter = 'all' | 'danger' | 'warning' | 'safe';
 type Direction = 'all' | 'inbound' | 'outbound';
@@ -19,13 +20,11 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'safe', label: 'Safe' },
 ];
 
-// Assign direction deterministically from id
-function getDirection(call: CallRecord): 'inbound' | 'outbound' {
-  return parseInt(call.id) % 2 === 0 ? 'outbound' : 'inbound';
-}
+const THREAT_COLORS = { safe: Colors.safe, warning: Colors.warning, danger: Colors.danger };
+const THREAT_LABELS = { safe: 'SAFE', warning: 'SUSPICIOUS', danger: 'HIGH RISK' };
 
-function formatTime(d: Date) {
-  const diff = Date.now() - d.getTime();
+function formatTime(d: string) {
+  const diff = Date.now() - new Date(d).getTime();
   const mins = Math.round(diff / 60000);
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.round(mins / 60);
@@ -39,83 +38,82 @@ function formatDur(s: number) {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-// Simulate incoming call scenarios for demo
 const DEMO_INCOMING = [
   { label: 'IRS Scam', number: '+1 (202) 555-0147', name: 'Unknown Caller' },
-  { label: 'Doctor\'s Office', number: '+1 (415) 555-0230', name: 'Dr. Nguyen' },
+  { label: "Doctor's Office", number: '+1 (415) 555-0230', name: 'Dr. Nguyen' },
   { label: 'Unknown VoIP', number: '+1 (800) 555-0982', name: 'Unknown Caller' },
 ];
 
 export default function CallsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { calls, loading, refresh } = useCallRecords();
+
   const [filter, setFilter] = useState<Filter>('all');
   const [direction, setDirection] = useState<Direction>('all');
   const [search, setSearch] = useState('');
   const [showIncomingDemo, setShowIncomingDemo] = useState(false);
 
-  const filtered = MOCK_CALLS.filter(c => {
-    const dir = getDirection(c);
-    const matchFilter = filter === 'all' || c.threatLevel === filter;
-    const matchDir = direction === 'all' || dir === direction;
+  const filtered = calls.filter(c => {
+    const matchFilter = filter === 'all' || c.threat_level === filter;
+    const matchDir = direction === 'all' || c.direction === direction;
     const matchSearch = !search ||
-      c.callerName.toLowerCase().includes(search.toLowerCase()) ||
-      c.callerNumber.includes(search) ||
-      (c.scamType || '').toLowerCase().includes(search.toLowerCase());
+      c.caller_name.toLowerCase().includes(search.toLowerCase()) ||
+      c.caller_number.includes(search) ||
+      (c.scam_type || '').toLowerCase().includes(search.toLowerCase());
     return matchFilter && matchDir && matchSearch;
   });
 
   const renderItem = ({ item }: { item: CallRecord }) => {
-    const color = ThreatService.getThreatColor(item.threatLevel);
-    const dir = getDirection(item);
+    const color = THREAT_COLORS[item.threat_level];
     return (
       <TouchableOpacity
         style={styles.card}
         onPress={() => router.push({ pathname: '/call-detail', params: { id: item.id } })}
         activeOpacity={0.8}
       >
-        {/* Direction indicator */}
         <View style={styles.cardLeft}>
           <View style={[styles.avatar, { borderColor: color }]}>
             <MaterialIcons
-              name={item.ghostHandled ? 'hearing' : item.threatLevel === 'danger' ? 'warning' : 'person'}
-              size={22}
-              color={color}
+              name={item.ghost_handled ? 'hearing' : item.threat_level === 'danger' ? 'warning' : 'person'}
+              size={22} color={color}
             />
           </View>
-          <View style={[styles.dirTag, dir === 'outbound' ? styles.outTag : styles.inTag]}>
+          <View style={[styles.dirTag, item.direction === 'outbound' ? styles.outTag : styles.inTag]}>
             <MaterialIcons
-              name={dir === 'outbound' ? 'call-made' : 'call-received'}
+              name={item.direction === 'outbound' ? 'call-made' : 'call-received'}
               size={10}
-              color={dir === 'outbound' ? Colors.primary : Colors.safe}
+              color={item.direction === 'outbound' ? Colors.primary : Colors.safe}
             />
           </View>
         </View>
 
         <View style={styles.cardBody}>
           <View style={styles.cardRow}>
-            <Text style={styles.callerName} numberOfLines={1}>{item.callerName}</Text>
-            <Text style={styles.timeText}>{formatTime(item.timestamp)}</Text>
+            <Text style={styles.callerName} numberOfLines={1}>{item.caller_name}</Text>
+            <Text style={styles.timeText}>{formatTime(item.started_at)}</Text>
           </View>
-          <Text style={styles.callerNumber}>{item.callerNumber}</Text>
+          <Text style={styles.callerNumber}>{item.caller_number}</Text>
           <View style={styles.cardTagRow}>
-            {item.ghostHandled && (
+            {item.ghost_handled && (
               <View style={styles.ghostTag}>
                 <MaterialIcons name="hearing" size={10} color={Colors.primary} />
                 <Text style={styles.ghostTagText}>Ghost</Text>
               </View>
             )}
-            {item.scamType ? (
+            {item.scam_type ? (
               <View style={[styles.scamTag, { backgroundColor: color + '22', borderColor: color + '55' }]}>
-                <Text style={[styles.scamTagText, { color }]}>{item.scamType}</Text>
+                <Text style={[styles.scamTagText, { color }]}>{item.scam_type}</Text>
               </View>
             ) : null}
-            <Text style={styles.durationText}>{formatDur(item.duration)}</Text>
+            <Text style={styles.durationText}>{formatDur(item.duration_seconds)}</Text>
           </View>
-          <Text style={styles.summaryText} numberOfLines={2}>{item.summary}</Text>
+          {item.summary ? (
+            <Text style={styles.summaryText} numberOfLines={2}>{item.summary}</Text>
+          ) : null}
         </View>
         <View style={[styles.threatIndicator, { backgroundColor: color }]}>
-          <Text style={styles.threatScore}>{item.threatScore}</Text>
+          <Text style={styles.threatScore}>{item.threat_score}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -127,6 +125,9 @@ export default function CallsScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Call History</Text>
         <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.refreshBtn} onPress={refresh} activeOpacity={0.8}>
+            <MaterialIcons name="refresh" size={16} color={Colors.primary} />
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.demoBtn}
             onPress={() => setShowIncomingDemo(s => !s)}
@@ -181,13 +182,13 @@ export default function CallsScreen() {
         )}
       </View>
 
-      {/* Direction + Threat Filters */}
+      {/* Filters */}
       <View style={styles.filtersBlock}>
         <View style={styles.filterRow}>
-          {['all', 'inbound', 'outbound'].map(d => (
+          {(['all', 'inbound', 'outbound'] as Direction[]).map(d => (
             <TouchableOpacity
               key={d}
-              onPress={() => setDirection(d as Direction)}
+              onPress={() => setDirection(d)}
               style={[styles.filterChip, direction === d && styles.filterChipActive]}
               activeOpacity={0.8}
             >
@@ -218,19 +219,33 @@ export default function CallsScreen() {
         </View>
       </View>
 
-      <FlatList
-        data={filtered}
-        keyExtractor={i => i.id}
-        renderItem={renderItem}
-        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 90 }]}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <MaterialIcons name="phone-missed" size={48} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>No calls match your filter</Text>
-          </View>
-        }
-      />
+      {loading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={Colors.primary} size="large" />
+          <Text style={styles.loadingText}>Loading call history...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={i => i.id}
+          renderItem={renderItem}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 90 }]}
+          showsVerticalScrollIndicator={false}
+          onRefresh={refresh}
+          refreshing={loading}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <MaterialIcons name="phone-missed" size={48} color={Colors.textMuted} />
+              <Text style={styles.emptyText}>No calls yet</Text>
+              <Text style={styles.emptySubText}>
+                {calls.length === 0
+                  ? 'Calls analyzed by SENTINEL™ will appear here'
+                  : 'No calls match your filter'}
+              </Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
@@ -243,6 +258,10 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.text },
   headerRight: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
+  refreshBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bgCard,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border,
+  },
   demoBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: Colors.safeGlow, borderRadius: Radius.full,
@@ -282,6 +301,9 @@ const styles = StyleSheet.create({
   filterChipActive: { backgroundColor: Colors.primaryGlow, borderColor: Colors.primary },
   filterText: { fontSize: FontSize.xs, fontWeight: FontWeight.medium, color: Colors.textSecondary },
   filterTextActive: { color: Colors.primary, fontWeight: FontWeight.bold },
+
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md },
+  loadingText: { fontSize: FontSize.sm, color: Colors.textSecondary },
 
   list: { paddingHorizontal: Spacing.md },
   card: {
@@ -323,6 +345,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   threatScore: { fontSize: FontSize.xs, fontWeight: FontWeight.extrabold, color: '#fff' },
-  empty: { alignItems: 'center', paddingTop: 60, gap: Spacing.md },
-  emptyText: { fontSize: FontSize.md, color: Colors.textMuted },
+  empty: { alignItems: 'center', paddingTop: 60, gap: Spacing.sm },
+  emptyText: { fontSize: FontSize.md, color: Colors.textMuted, fontWeight: FontWeight.semibold },
+  emptySubText: { fontSize: FontSize.sm, color: Colors.textMuted, textAlign: 'center', maxWidth: 260 },
 });
