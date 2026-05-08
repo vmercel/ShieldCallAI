@@ -47,7 +47,7 @@ const DEMO_INCOMING = [
 export default function CallsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { calls, loading, refresh } = useCallRecords();
+  const { calls, loading, error, networkStatus, refresh } = useCallRecords();
 
   const [filter, setFilter] = useState<Filter>('all');
   const [direction, setDirection] = useState<Direction>('all');
@@ -224,6 +224,26 @@ export default function CallsScreen() {
           <ActivityIndicator color={Colors.primary} size="large" />
           <Text style={styles.loadingText}>Loading call history...</Text>
         </View>
+      ) : networkStatus === 'offline' ? (
+        <View style={styles.offlineWrap}>
+          <MaterialIcons name="wifi-off" size={48} color={Colors.textMuted} />
+          <Text style={styles.offlineTitle}>You are offline</Text>
+          <Text style={styles.offlineSub}>Call history requires a network connection. Check your connection and try again.</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={refresh} activeOpacity={0.85}>
+            <MaterialIcons name="refresh" size={16} color={Colors.textInverse} />
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : networkStatus === 'error' ? (
+        <View style={styles.offlineWrap}>
+          <MaterialIcons name="error-outline" size={48} color={Colors.danger} />
+          <Text style={styles.offlineTitle}>Could not load calls</Text>
+          <Text style={styles.offlineSub}>{error || 'An unexpected error occurred. Please try again.'}</Text>
+          <TouchableOpacity style={[styles.retryBtn, { backgroundColor: Colors.danger }]} onPress={refresh} activeOpacity={0.85}>
+            <MaterialIcons name="refresh" size={16} color={Colors.textInverse} />
+            <Text style={styles.retryBtnText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
           data={filtered}
@@ -304,6 +324,11 @@ const styles = StyleSheet.create({
 
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md },
   loadingText: { fontSize: FontSize.sm, color: Colors.textSecondary },
+  offlineWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, paddingHorizontal: Spacing.xl },
+  offlineTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center' },
+  offlineSub: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
+  retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 24, paddingVertical: 12, marginTop: Spacing.sm },
+  retryBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textInverse },
 
   list: { paddingHorizontal: Spacing.md },
   card: {

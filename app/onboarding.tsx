@@ -2,11 +2,12 @@
  * CALLSHIELD Onboarding + Auth Screen
  *
  * Flow:
- * 1. Three feature slides (swipeable)
+ * 1. Three feature slides (swipeable + button nav)
  * 2. Sign Up screen (name, email, phone, password)
  * 3. OTP Verification screen (6-digit code sent to email)
  * 4. Sign In screen (for returning users)
- * 5. AI Persona selection
+ * 5. Forgot Password flow
+ * 6. AI Persona selection
  * → Authenticated users land on /(tabs)
  */
 
@@ -23,6 +24,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../constants/theme';
+import { supabase } from '../services/supabaseClient';
 
 const { width, height } = Dimensions.get('window');
 const PERSONAS = ['Alex', 'Jordan', 'Morgan', 'Casey', 'Riley'];
@@ -50,16 +52,16 @@ const SLIDES = [
 
 // ─── Input Field ──────────────────────────────────────────────────────────────
 function AuthInput({
-  icon, placeholder, value, onChangeText, secureTextEntry, keyboardType, autoCapitalize,
+  icon, placeholder, value, onChangeText, secureTextEntry, keyboardType, autoCapitalize, editable,
 }: {
   icon: string; placeholder: string; value: string;
   onChangeText: (t: string) => void; secureTextEntry?: boolean;
-  keyboardType?: any; autoCapitalize?: any;
+  keyboardType?: any; autoCapitalize?: any; editable?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   return (
-    <View style={[inputStyles.wrap, focused && inputStyles.wrapFocused]}>
+    <View style={[inputStyles.wrap, focused && inputStyles.wrapFocused, editable === false && inputStyles.wrapDisabled]}>
       <MaterialIcons name={icon as any} size={18} color={focused ? Colors.primary : Colors.textMuted} />
       <TextInput
         style={inputStyles.input}
@@ -73,6 +75,7 @@ function AuthInput({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         autoCorrect={false}
+        editable={editable !== false}
       />
       {secureTextEntry && (
         <TouchableOpacity onPress={() => setShowPwd(v => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -91,6 +94,7 @@ const inputStyles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.border,
   },
   wrapFocused: { borderColor: Colors.primary, backgroundColor: Colors.primaryGlow },
+  wrapDisabled: { opacity: 0.6 },
   input: {
     flex: 1, fontSize: FontSize.md, color: Colors.text,
     includeFontPadding: false,
@@ -128,13 +132,9 @@ function useWebAlert() {
 
 // ─── OTP Verification Screen ──────────────────────────────────────────────────
 function OtpScreen({
-  email,
-  onSuccess,
-  onBack,
+  email, onSuccess, onBack,
 }: {
-  email: string;
-  onSuccess: () => void;
-  onBack: () => void;
+  email: string; onSuccess: () => void; onBack: () => void;
 }) {
   const { verifyOtp, resendOtp } = useAuth();
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -147,10 +147,7 @@ function OtpScreen({
   const { showAlert, AlertModal } = useWebAlert();
 
   useEffect(() => {
-    if (countdown <= 0) {
-      setCanResend(true);
-      return;
-    }
+    if (countdown <= 0) { setCanResend(true); return; }
     const t = setTimeout(() => setCountdown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [countdown]);
@@ -161,9 +158,7 @@ function OtpScreen({
     next[idx] = digit;
     setOtp(next);
     setError('');
-    if (digit && idx < 5) {
-      inputRefs.current[idx + 1]?.focus();
-    }
+    if (digit && idx < 5) inputRefs.current[idx + 1]?.focus();
   };
 
   const handleKeyPress = (e: any, idx: number) => {
@@ -177,10 +172,7 @@ function OtpScreen({
 
   const handleVerify = async () => {
     const code = otp.join('');
-    if (code.length < 6) {
-      setError('Please enter all 6 digits.');
-      return;
-    }
+    if (code.length < 6) { setError('Please enter all 6 digits.'); return; }
     setLoading(true);
     const { error: err } = await verifyOtp(email, code);
     setLoading(false);
@@ -198,13 +190,10 @@ function OtpScreen({
     setResending(true);
     const { error: err } = await resendOtp(email);
     setResending(false);
-    if (err) {
-      showAlert('Resend Failed', err);
-    } else {
-      setCanResend(false);
-      setCountdown(60);
-      setOtp(['', '', '', '', '', '']);
-      setError('');
+    if (err) { showAlert('Resend Failed', err); }
+    else {
+      setCanResend(false); setCountdown(60);
+      setOtp(['', '', '', '', '', '']); setError('');
       setTimeout(() => inputRefs.current[0]?.focus(), 100);
     }
   };
@@ -214,33 +203,22 @@ function OtpScreen({
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {AlertModal}
-      <ScrollView
-        contentContainerStyle={styles.authContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Logo */}
+      <ScrollView contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.authLogoWrap}>
           <MaterialIcons name="mark-email-unread" size={40} color={Colors.primary} />
         </View>
-
         <Text style={styles.authTitle}>Verify Your Email</Text>
         <Text style={styles.authSubtitle}>
           We sent a 6-digit code to{'\n'}
           <Text style={{ color: Colors.primary, fontWeight: FontWeight.bold }}>{maskedEmail}</Text>
         </Text>
 
-        {/* 6-digit boxes */}
         <View style={otpStyles.row}>
           {otp.map((digit, idx) => (
             <TextInput
               key={idx}
               ref={ref => { inputRefs.current[idx] = ref; }}
-              style={[
-                otpStyles.box,
-                digit ? otpStyles.boxFilled : null,
-                error ? otpStyles.boxError : null,
-              ]}
+              style={[otpStyles.box, digit ? otpStyles.boxFilled : null, error ? otpStyles.boxError : null]}
               value={digit}
               onChangeText={val => handleChange(val, idx)}
               onKeyPress={e => handleKeyPress(e, idx)}
@@ -260,16 +238,8 @@ function OtpScreen({
           </View>
         ) : null}
 
-        {/* Verify button */}
-        <TouchableOpacity
-          style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
-          onPress={handleVerify}
-          disabled={loading}
-          activeOpacity={0.85}
-        >
-          {loading ? (
-            <ActivityIndicator color={Colors.textInverse} size="small" />
-          ) : (
+        <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={handleVerify} disabled={loading} activeOpacity={0.85}>
+          {loading ? <ActivityIndicator color={Colors.textInverse} size="small" /> : (
             <>
               <MaterialIcons name="verified-user" size={18} color={Colors.textInverse} />
               <Text style={styles.primaryBtnText}>Verify & Continue</Text>
@@ -277,36 +247,20 @@ function OtpScreen({
           )}
         </TouchableOpacity>
 
-        {/* Resend */}
-        <TouchableOpacity
-          onPress={handleResend}
-          disabled={!canResend || resending}
-          style={[styles.switchBtn, (!canResend || resending) && { opacity: 0.5 }]}
-          activeOpacity={0.8}
-        >
-          {resending ? (
-            <ActivityIndicator color={Colors.primary} size="small" />
-          ) : (
+        <TouchableOpacity onPress={handleResend} disabled={!canResend || resending} style={[styles.switchBtn, (!canResend || resending) && { opacity: 0.5 }]} activeOpacity={0.8}>
+          {resending ? <ActivityIndicator color={Colors.primary} size="small" /> : (
             <Text style={styles.switchText}>
-              {canResend
-                ? <Text style={styles.switchLink}>Resend code</Text>
-                : `Resend code in ${countdown}s`}
+              {canResend ? <Text style={styles.switchLink}>Resend code</Text> : `Resend code in ${countdown}s`}
             </Text>
           )}
         </TouchableOpacity>
 
         <View style={styles.privacyBox}>
           <MaterialIcons name="info-outline" size={14} color={Colors.primary} />
-          <Text style={styles.privacyText}>
-            Check your spam folder if you don't see the email. The code expires in 10 minutes.
-          </Text>
+          <Text style={styles.privacyText}>Check your spam folder if you don not see the email. The code expires in 10 minutes.</Text>
         </View>
-
-        {/* Wrong email? */}
         <TouchableOpacity onPress={onBack} style={styles.switchBtn} activeOpacity={0.8}>
-          <Text style={styles.switchText}>
-            Wrong email? <Text style={styles.switchLink}>Go back</Text>
-          </Text>
+          <Text style={styles.switchText}>Wrong email? <Text style={styles.switchLink}>Go back</Text></Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -314,41 +268,94 @@ function OtpScreen({
 }
 
 const otpStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  box: {
-    width: 46,
-    height: 58,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.bgCard,
-    borderWidth: 2,
-    borderColor: Colors.border,
-    fontSize: 26,
-    fontWeight: FontWeight.extrabold,
-    color: Colors.text,
-    textAlign: 'center',
-  },
-  boxFilled: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primaryGlow,
-  },
-  boxError: {
-    borderColor: Colors.danger,
-    backgroundColor: Colors.dangerGlow,
-  },
+  row: { flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  box: { width: 46, height: 58, borderRadius: Radius.md, backgroundColor: Colors.bgCard, borderWidth: 2, borderColor: Colors.border, fontSize: 26, fontWeight: FontWeight.extrabold, color: Colors.text, textAlign: 'center' },
+  boxFilled: { borderColor: Colors.primary, backgroundColor: Colors.primaryGlow },
+  boxError: { borderColor: Colors.danger, backgroundColor: Colors.dangerGlow },
 });
 
+// ─── Forgot Password Screen ───────────────────────────────────────────────────
+function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+  const { showAlert, AlertModal } = useWebAlert();
+
+  const handleReset = async () => {
+    setError('');
+    if (!email.trim() || !email.includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    setLoading(true);
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: 'onspaceapp://reset-password',
+    });
+    setLoading(false);
+    if (err) {
+      setError(err.message);
+    } else {
+      setSent(true);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      {AlertModal}
+      <ScrollView contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={styles.authLogoWrap}>
+          <MaterialIcons name="lock-reset" size={40} color={Colors.primary} />
+        </View>
+        <Text style={styles.authTitle}>Reset Password</Text>
+        <Text style={styles.authSubtitle}>
+          {sent
+            ? "Check your email for a password reset link. It expires in 1 hour."
+            : "Enter your email address and we will send you a reset link."}
+        </Text>
+
+        {!sent ? (
+          <>
+            <AuthInput
+              icon="email"
+              placeholder="Email Address"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            {error ? (
+              <View style={styles.errorBox}>
+                <MaterialIcons name="error-outline" size={16} color={Colors.danger} />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
+            <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={handleReset} disabled={loading} activeOpacity={0.85}>
+              {loading ? <ActivityIndicator color={Colors.textInverse} size="small" /> : (
+                <>
+                  <MaterialIcons name="send" size={18} color={Colors.textInverse} />
+                  <Text style={styles.primaryBtnText}>Send Reset Link</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </>
+        ) : (
+          <View style={styles.successBox}>
+            <MaterialIcons name="mark-email-read" size={32} color={Colors.safe} />
+            <Text style={styles.successText}>Reset link sent! Check your inbox and spam folder.</Text>
+          </View>
+        )}
+
+        <TouchableOpacity onPress={onBack} style={styles.switchBtn} activeOpacity={0.8}>
+          <Text style={styles.switchText}>Back to <Text style={styles.switchLink}>Sign In</Text></Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
 // ─── Sign Up Screen ───────────────────────────────────────────────────────────
-function SignUpScreen({
-  onSignIn,
-  onSuccess,
-}: {
-  onSignIn: () => void;
-  onSuccess: (email: string) => void;
-}) {
+function SignUpScreen({ onSignIn, onSuccess }: { onSignIn: () => void; onSuccess: (email: string) => void }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -370,71 +377,26 @@ function SignUpScreen({
     setLoading(true);
     const { error } = await signUp(email, password, fullName, phone);
     setLoading(false);
-
-    if (error) {
-      setFieldError(error);
-    } else {
-      onSuccess(email.trim().toLowerCase());
-    }
+    if (error) { setFieldError(error); }
+    else { onSuccess(email.trim().toLowerCase()); }
   };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {AlertModal}
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.authContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.authLogoWrap}>
           <MaterialIcons name="shield" size={40} color={Colors.primary} />
         </View>
         <Text style={styles.authTitle}>Create Account</Text>
-        <Text style={styles.authSubtitle}>
-          Join CALLSHIELD and activate your AI protection layer.
-        </Text>
+        <Text style={styles.authSubtitle}>Join CALLSHIELD and activate your AI protection layer.</Text>
 
         <View style={styles.form}>
-          <AuthInput
-            icon="person"
-            placeholder="Full Name"
-            value={fullName}
-            onChangeText={setFullName}
-            autoCapitalize="words"
-          />
-          <AuthInput
-            icon="email"
-            placeholder="Email Address"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          <AuthInput
-            icon="phone"
-            placeholder="Phone Number"
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-            autoCapitalize="none"
-          />
-          <AuthInput
-            icon="lock"
-            placeholder="Password (min 6 characters)"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-          />
-          <AuthInput
-            icon="lock-outline"
-            placeholder="Confirm Password"
-            value={confirmPwd}
-            onChangeText={setConfirmPwd}
-            secureTextEntry
-            autoCapitalize="none"
-          />
+          <AuthInput icon="person" placeholder="Full Name" value={fullName} onChangeText={setFullName} autoCapitalize="words" />
+          <AuthInput icon="email" placeholder="Email Address" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+          <AuthInput icon="phone" placeholder="Phone Number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoCapitalize="none" />
+          <AuthInput icon="lock" placeholder="Password (min 6 characters)" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" />
+          <AuthInput icon="lock-outline" placeholder="Confirm Password" value={confirmPwd} onChangeText={setConfirmPwd} secureTextEntry autoCapitalize="none" />
         </View>
 
         {fieldError ? (
@@ -446,31 +408,19 @@ function SignUpScreen({
 
         <View style={styles.privacyBox}>
           <MaterialIcons name="lock" size={14} color={Colors.primary} />
-          <Text style={styles.privacyText}>
-            All audio processing is on-device. Your call audio never leaves your phone.
-          </Text>
+          <Text style={styles.privacyText}>All audio processing is on-device. Your call audio never leaves your phone.</Text>
         </View>
 
-        <TouchableOpacity
-          style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
-          onPress={handleSignUp}
-          disabled={loading}
-          activeOpacity={0.85}
-        >
-          {loading ? (
-            <ActivityIndicator color={Colors.textInverse} size="small" />
-          ) : (
+        <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={handleSignUp} disabled={loading} activeOpacity={0.85}>
+          {loading ? <ActivityIndicator color={Colors.textInverse} size="small" /> : (
             <>
               <MaterialIcons name="shield" size={18} color={Colors.textInverse} />
               <Text style={styles.primaryBtnText}>Create Account</Text>
             </>
           )}
         </TouchableOpacity>
-
         <TouchableOpacity onPress={onSignIn} style={styles.switchBtn} activeOpacity={0.8}>
-          <Text style={styles.switchText}>
-            Already have an account? <Text style={styles.switchLink}>Sign In</Text>
-          </Text>
+          <Text style={styles.switchText}>Already have an account? <Text style={styles.switchLink}>Sign In</Text></Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -478,7 +428,7 @@ function SignUpScreen({
 }
 
 // ─── Sign In Screen ───────────────────────────────────────────────────────────
-function SignInScreen({ onSignUp, onSuccess }: { onSignUp: () => void; onSuccess: () => void }) {
+function SignInScreen({ onSignUp, onSuccess, onForgotPassword }: { onSignUp: () => void; onSuccess: () => void; onForgotPassword: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -489,51 +439,25 @@ function SignInScreen({ onSignUp, onSuccess }: { onSignUp: () => void; onSuccess
     setFieldError('');
     if (!email.trim()) return setFieldError('Please enter your email.');
     if (!password) return setFieldError('Please enter your password.');
-
     setLoading(true);
     const { error } = await signIn(email, password);
     setLoading(false);
-
-    if (error) {
-      setFieldError(error);
-    } else {
-      onSuccess();
-    }
+    if (error) { setFieldError(error); }
+    else { onSuccess(); }
   };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.authContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.authLogoWrap}>
           <MaterialIcons name="shield" size={40} color={Colors.primary} />
         </View>
         <Text style={styles.authTitle}>Welcome Back</Text>
-        <Text style={styles.authSubtitle}>
-          Sign in to reactivate your CALLSHIELD protection.
-        </Text>
+        <Text style={styles.authSubtitle}>Sign in to reactivate your CALLSHIELD protection.</Text>
 
         <View style={styles.form}>
-          <AuthInput
-            icon="email"
-            placeholder="Email Address"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          <AuthInput
-            icon="lock"
-            placeholder="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-          />
+          <AuthInput icon="email" placeholder="Email Address" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+          <AuthInput icon="lock" placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" />
         </View>
 
         {fieldError ? (
@@ -543,26 +467,21 @@ function SignInScreen({ onSignUp, onSuccess }: { onSignUp: () => void; onSuccess
           </View>
         ) : null}
 
-        <TouchableOpacity
-          style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
-          onPress={handleSignIn}
-          disabled={loading}
-          activeOpacity={0.85}
-        >
-          {loading ? (
-            <ActivityIndicator color={Colors.textInverse} size="small" />
-          ) : (
+        {/* Forgot Password Link */}
+        <TouchableOpacity onPress={onForgotPassword} style={styles.forgotBtn} activeOpacity={0.8}>
+          <Text style={styles.forgotText}>Forgot your password?</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={handleSignIn} disabled={loading} activeOpacity={0.85}>
+          {loading ? <ActivityIndicator color={Colors.textInverse} size="small" /> : (
             <>
               <MaterialIcons name="security" size={18} color={Colors.textInverse} />
               <Text style={styles.primaryBtnText}>Sign In</Text>
             </>
           )}
         </TouchableOpacity>
-
         <TouchableOpacity onPress={onSignUp} style={styles.switchBtn} activeOpacity={0.8}>
-          <Text style={styles.switchText}>
-            New to CALLSHIELD? <Text style={styles.switchLink}>Create Account</Text>
-          </Text>
+          <Text style={styles.switchText}>New to CALLSHIELD? <Text style={styles.switchLink}>Create Account</Text></Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -583,9 +502,7 @@ function PersonaScreen({ onActivate }: { onActivate: (name: string) => void }) {
         Welcome{profile?.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''}!
       </Text>
       <Text style={styles.personaTitle}>Choose Your AI{'\n'}Voice Persona</Text>
-      <Text style={styles.personaSubtitle}>
-        This is the name your AI agent uses when answering calls on your behalf.
-      </Text>
+      <Text style={styles.personaSubtitle}>This is the name your AI agent uses when answering calls on your behalf.</Text>
       <View style={styles.personaGrid}>
         {PERSONAS.map(name => (
           <TouchableOpacity
@@ -594,23 +511,15 @@ function PersonaScreen({ onActivate }: { onActivate: (name: string) => void }) {
             onPress={() => setSelected(name)}
             activeOpacity={0.8}
           >
-            <Text style={[styles.personaChipText, selected === name && styles.personaChipTextSelected]}>
-              {name}
-            </Text>
+            <Text style={[styles.personaChipText, selected === name && styles.personaChipTextSelected]}>{name}</Text>
           </TouchableOpacity>
         ))}
       </View>
       <View style={styles.privacyBox}>
         <MaterialIcons name="lock" size={14} color={Colors.primary} />
-        <Text style={styles.privacyText}>
-          All audio processing happens on-device. No audio is ever transmitted or shared.
-        </Text>
+        <Text style={styles.privacyText}>All audio processing happens on-device. No audio is ever transmitted or shared.</Text>
       </View>
-      <TouchableOpacity
-        style={styles.primaryBtn}
-        onPress={() => onActivate(selected)}
-        activeOpacity={0.85}
-      >
+      <TouchableOpacity style={styles.primaryBtn} onPress={() => onActivate(selected)} activeOpacity={0.85}>
         <MaterialIcons name="shield" size={18} color={Colors.textInverse} />
         <Text style={styles.primaryBtnText}>Activate CALLSHIELD</Text>
       </TouchableOpacity>
@@ -619,7 +528,7 @@ function PersonaScreen({ onActivate }: { onActivate: (name: string) => void }) {
 }
 
 // ─── Main Onboarding ──────────────────────────────────────────────────────────
-type Screen = 'slides' | 'signup' | 'otp' | 'signin' | 'persona';
+type Screen = 'slides' | 'signup' | 'otp' | 'signin' | 'forgotPassword' | 'persona';
 
 export default function OnboardingScreen() {
   const [screen, setScreen] = useState<Screen>('slides');
@@ -631,31 +540,23 @@ export default function OnboardingScreen() {
   const { setOnboarded, setPersonaName, setGhostMode } = useApp();
   const { updateProfile } = useAuth();
 
-  const goNext = () => {
-    if (slideIndex < SLIDES.length - 1) {
-      const next = slideIndex + 1;
-      setSlideIndex(next);
-      scrollRef.current?.scrollTo({ x: next * width, animated: true });
-    } else {
-      setScreen('signup');
-    }
+  const goSlide = (idx: number) => {
+    setSlideIndex(idx);
+    scrollRef.current?.scrollTo({ x: idx * width, animated: true });
   };
 
-  // After signup → show OTP screen
+  const goNext = () => {
+    if (slideIndex < SLIDES.length - 1) { goSlide(slideIndex + 1); }
+    else { setScreen('signup'); }
+  };
+
   const handleSignUpSuccess = (email: string) => {
     setPendingEmail(email);
     setScreen('otp');
   };
 
-  // After OTP verified → persona
-  const handleOtpSuccess = () => {
-    setScreen('persona');
-  };
-
-  // After sign-in → persona
-  const handleSignInSuccess = () => {
-    setScreen('persona');
-  };
+  const handleOtpSuccess = () => setScreen('persona');
+  const handleSignInSuccess = () => setScreen('persona');
 
   const handleActivate = async (personaName: string) => {
     await Promise.all([
@@ -673,10 +574,7 @@ export default function OnboardingScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => setScreen('slides')}>
           <MaterialIcons name="arrow-back" size={22} color={Colors.textSecondary} />
         </TouchableOpacity>
-        <SignUpScreen
-          onSignIn={() => setScreen('signin')}
-          onSuccess={handleSignUpSuccess}
-        />
+        <SignUpScreen onSignIn={() => setScreen('signin')} onSuccess={handleSignUpSuccess} />
       </View>
     );
   }
@@ -687,11 +585,7 @@ export default function OnboardingScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => setScreen('signup')}>
           <MaterialIcons name="arrow-back" size={22} color={Colors.textSecondary} />
         </TouchableOpacity>
-        <OtpScreen
-          email={pendingEmail}
-          onSuccess={handleOtpSuccess}
-          onBack={() => setScreen('signup')}
-        />
+        <OtpScreen email={pendingEmail} onSuccess={handleOtpSuccess} onBack={() => setScreen('signup')} />
       </View>
     );
   }
@@ -705,7 +599,19 @@ export default function OnboardingScreen() {
         <SignInScreen
           onSignUp={() => setScreen('signup')}
           onSuccess={handleSignInSuccess}
+          onForgotPassword={() => setScreen('forgotPassword')}
         />
+      </View>
+    );
+  }
+
+  if (screen === 'forgotPassword') {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => setScreen('signin')}>
+          <MaterialIcons name="arrow-back" size={22} color={Colors.textSecondary} />
+        </TouchableOpacity>
+        <ForgotPasswordScreen onBack={() => setScreen('signin')} />
       </View>
     );
   }
@@ -718,25 +624,24 @@ export default function OnboardingScreen() {
     );
   }
 
-  // Slides
+  // Slides — swipe-enabled
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom + 24 }]}>
       <ScrollView
         ref={scrollRef}
         horizontal
         pagingEnabled
-        scrollEnabled={false}
+        scrollEnabled
         showsHorizontalScrollIndicator={false}
         style={{ flex: 1 }}
+        onMomentumScrollEnd={e => {
+          const newIndex = Math.round(e.nativeEvent.contentOffset.x / width);
+          setSlideIndex(newIndex);
+        }}
       >
         {SLIDES.map((slide, idx) => (
           <View key={idx} style={[styles.slide, { width }]}>
-            <Image
-              source={slide.image}
-              style={styles.slideImage}
-              contentFit="cover"
-              transition={300}
-            />
+            <Image source={slide.image} style={styles.slideImage} contentFit="cover" transition={300} />
             <View style={styles.slideOverlay} />
             <View style={styles.slideContent}>
               <View style={styles.slideIconWrap}>
@@ -750,9 +655,12 @@ export default function OnboardingScreen() {
       </ScrollView>
 
       <View style={styles.bottomArea}>
+        {/* Tap dots to navigate */}
         <View style={styles.dotsRow}>
           {SLIDES.map((_, i) => (
-            <View key={i} style={[styles.dot, i === slideIndex && styles.dotActive]} />
+            <TouchableOpacity key={i} onPress={() => goSlide(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <View style={[styles.dot, i === slideIndex && styles.dotActive]} />
+            </TouchableOpacity>
           ))}
         </View>
         <TouchableOpacity style={styles.nextBtn} onPress={goNext} activeOpacity={0.85}>
@@ -761,14 +669,8 @@ export default function OnboardingScreen() {
           </Text>
           <MaterialIcons name="arrow-forward" size={20} color={Colors.textInverse} />
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setScreen('signin')}
-          style={styles.alreadyBtn}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.alreadyText}>
-            Already have an account? <Text style={styles.alreadyLink}>Sign In</Text>
-          </Text>
+        <TouchableOpacity onPress={() => setScreen('signin')} style={styles.alreadyBtn} activeOpacity={0.8}>
+          <Text style={styles.alreadyText}>Already have an account? <Text style={styles.alreadyLink}>Sign In</Text></Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -789,10 +691,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryGlow, borderWidth: 1, borderColor: Colors.borderStrong,
     alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.md,
   },
-  slideTitle: {
-    fontSize: 38, fontWeight: FontWeight.extrabold, color: Colors.text,
-    lineHeight: 44, marginBottom: Spacing.md,
-  },
+  slideTitle: { fontSize: 38, fontWeight: FontWeight.extrabold, color: Colors.text, lineHeight: 44, marginBottom: Spacing.md },
   slideSubtitle: { fontSize: FontSize.md, color: Colors.textSecondary, lineHeight: 24 },
   bottomArea: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
@@ -813,23 +712,14 @@ const styles = StyleSheet.create({
   alreadyLink: { color: Colors.primary, fontWeight: FontWeight.bold },
 
   // Auth screens
-  authContent: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.xxl,
-    gap: Spacing.md,
-  },
+  authContent: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.md },
   authLogoWrap: {
     width: 76, height: 76, borderRadius: Radius.xl,
     backgroundColor: Colors.primaryGlow, borderWidth: 1.5, borderColor: Colors.borderStrong,
     alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 4,
   },
-  authTitle: {
-    fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.text, textAlign: 'center',
-  },
-  authSubtitle: {
-    fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22,
-  },
+  authTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.text, textAlign: 'center' },
+  authSubtitle: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
   form: { gap: Spacing.sm },
   errorBox: {
     flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm,
@@ -837,10 +727,15 @@ const styles = StyleSheet.create({
     padding: Spacing.sm + 4, borderWidth: 1, borderColor: Colors.danger + '44',
   },
   errorText: { flex: 1, fontSize: FontSize.sm, color: Colors.danger, lineHeight: 20 },
+  successBox: {
+    alignItems: 'center', gap: Spacing.md,
+    backgroundColor: Colors.safeGlow, borderRadius: Radius.lg,
+    padding: Spacing.lg, borderWidth: 1, borderColor: Colors.safe + '44',
+  },
+  successText: { fontSize: FontSize.md, color: Colors.safe, textAlign: 'center', lineHeight: 22, fontWeight: FontWeight.semibold },
   privacyBox: {
     flexDirection: 'row', gap: Spacing.sm, backgroundColor: Colors.bgCard,
-    borderRadius: Radius.md, padding: Spacing.md,
-    borderWidth: 1, borderColor: Colors.border,
+    borderRadius: Radius.md, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border,
   },
   privacyText: { flex: 1, fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 18 },
   primaryBtn: {
@@ -852,26 +747,20 @@ const styles = StyleSheet.create({
   switchBtn: { alignItems: 'center', paddingVertical: 8 },
   switchText: { fontSize: FontSize.sm, color: Colors.textSecondary },
   switchLink: { color: Colors.primary, fontWeight: FontWeight.bold },
+  forgotBtn: { alignSelf: 'flex-end', paddingVertical: 4 },
+  forgotText: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.semibold },
 
   // Persona
-  personaContainer: {
-    flex: 1, paddingHorizontal: Spacing.lg, alignItems: 'center', justifyContent: 'center', gap: Spacing.md,
-  },
+  personaContainer: { flex: 1, paddingHorizontal: Spacing.lg, alignItems: 'center', justifyContent: 'center', gap: Spacing.md },
   personaLogoWrap: {
     width: 96, height: 96, borderRadius: Radius.xl,
     backgroundColor: Colors.primaryGlow, borderWidth: 1.5, borderColor: Colors.borderStrong,
     alignItems: 'center', justifyContent: 'center',
   },
   personaGreeting: { fontSize: FontSize.md, color: Colors.primary, fontWeight: FontWeight.semibold },
-  personaTitle: {
-    fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.text, textAlign: 'center',
-  },
-  personaSubtitle: {
-    fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22,
-  },
-  personaGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, justifyContent: 'center',
-  },
+  personaTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, color: Colors.text, textAlign: 'center' },
+  personaSubtitle: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
+  personaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, justifyContent: 'center' },
   personaChip: {
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm + 4, borderRadius: Radius.full,
     backgroundColor: Colors.bgCard, borderWidth: 1.5, borderColor: Colors.border,
