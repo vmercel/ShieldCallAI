@@ -1,22 +1,29 @@
 /**
- * Incoming Call Screen
- * Shows when an inbound call arrives — with instant caller dossier,
- * Ghost Mode toggle, and accept/reject actions.
- * SENTINEL™ pre-screens the number before user picks up.
+ * CALLSHIELD Incoming Call Screen
+ *
+ * Displays native-quality incoming call UI with:
+ * - Real contact lookup from device contacts (via contactsService)
+ * - Real community threat data from Supabase
+ * - CallKit integration — shows native iOS call UI on lock screen
+ * - SENTINEL™ pre-screen dossier with live DB data
+ * - Vibration on ring (native)
+ * - Ghost Mode, Accept, Decline actions
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Easing, Vibration, Platform,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Easing,
+  Vibration, Platform, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../constants/theme';
-import { findContactByNumber, getInitials, Contact } from '../constants/contacts';
+import { findContactByNumberSync, getAllContacts, getInitials, Contact } from '../services/contactsService';
 import { SentinelEngine } from '../services/sentinelEngine';
-import { ThreatService } from '../services/threatService';
-import { MOCK_SCAM_ALERTS } from '../constants/mockData';
+import { communityThreatsService, CommunityThreat } from '../services/communityThreatsService';
+import { answerCall, reportCallEnded } from '../services/callKitService';
+import { sendScamAlertNotification } from '../services/permissionsService';
 
 function formatLastCall(d?: Date): string {
   if (!d) return 'Never called';
@@ -27,7 +34,7 @@ function formatLastCall(d?: Date): string {
   return `Called ${Math.round(hrs / 24)}d ago`;
 }
 
-function ContactAvatar({ contact, size = 88 }: { contact?: Contact | null; size?: number }) {
+function ContactAvatar({ contact, size = 88, threatColor }: { contact?: Contact | null; size?: number; threatColor: string }) {
   if (contact) {
     return (
       <View style={[styles.avatarBase, {
@@ -44,10 +51,10 @@ function ContactAvatar({ contact, size = 88 }: { contact?: Contact | null; size?
   return (
     <View style={[styles.avatarBase, {
       width: size, height: size, borderRadius: size / 2,
-      backgroundColor: Colors.bgSurface,
-      borderColor: Colors.border,
+      backgroundColor: threatColor + '22',
+      borderColor: threatColor + '55',
     }]}>
-      <MaterialIcons name="person" size={size * 0.45} color={Colors.textMuted} />
+      <MaterialIcons name="person" size={size * 0.45} color={threatColor} />
     </View>
   );
 }
@@ -58,24 +65,28 @@ export default function IncomingCallScreen() {
   const params = useLocalSearchParams<{
     callerNumber?: string;
     callerName?: string;
+    callUUID?: string;
   }>();
 
   const callerNumber = params.callerNumber ?? '+1 (800) 555-0982';
-  const contact = findContactByNumber(callerNumber);
-  const callerName = contact?.name ?? params.callerName ?? 'Unknown Caller';
+  const callUUID = params.callUUID ?? null;
 
-  // Pre-screen the number against community threat feed
-  const communityAlert = MOCK_SCAM_ALERTS.find(a =>
-    a.number.replace(/\D/g, '') === callerNumber.replace(/\D/g, '')
-  );
-
+  // Contact & threat state
+  const [contact, setContact] = useState<Contact | null>(findContactByNumberSync(callerNumber));
+  const [communityThreat, setCommunityThreat] = useState<CommunityThreat | null>(null);
+  const [threatLoading, setThreatLoading] = useState(true);
   const [ringCount, setRingCount] = useState(1);
 
-  // Threat level from community or contact history
-  const preThreatLevel = communityAlert ? 'danger' : contact ? 'safe' : 'warning';
-  const threatColor = ThreatService.getThreatColor(preThreatLevel);
+  // Resolved name
+  const callerName = contact?.name ?? params.callerName ?? 'Unknown Caller';
 
-  // Pulse animation for avatar ring
+  // Threat level
+  const preThreatLevel = communityThreat
+    ? (communityThreat.report_count >= 50 ? 'danger' : 'warning')
+    : contact ? 'safe' : 'warning';
+  const threatColor = SentinelEngine.getThreatColor(preThreatLevel);
+
+  // Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const ring1 = useRef(new Animated.Value(1)).current;
   const ring1Opacity = useRef(new Animated.Value(0.5)).current;
@@ -83,6 +94,32 @@ export default function IncomingCallScreen() {
   const ring2Opacity = useRef(new Animated.Value(0.3)).current;
   const slideAnim = useRef(new Animated.Value(60)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Load real data in parallel
+  useEffect(() => {
+    // Load real contacts if not already cached
+    getAllContacts().then(contacts => {
+      const digits = callerNumber.replace(/\D/g, '');
+      const found = contacts.find(c => c.number.replace(/\D/g, '').slice(-7) === digits.slice(-7));
+      if (found) setContact(found);
+    });
+
+    // Check community threat DB
+    communityThreatsService.checkNumber(callerNumber).then(({ data }) => {
+      setCommunityThreat(data);
+      setThreatLoading(false);
+
+      // Send scam alert notification if high risk
+      if (data && data.report_count >= 50) {
+        sendScamAlertNotification({
+          callerName,
+          callerNumber,
+          threatLevel: data.report_count >= 100 ? 'danger' : 'warning',
+          scamType: data.scam_type ?? undefined,
+        });
+      }
+    });
+  }, [callerNumber]);
 
   useEffect(() => {
     // Entry animation
@@ -118,7 +155,6 @@ export default function IncomingCallScreen() {
     );
     pulsate.start(); ripple1.start(); ripple2.start();
 
-    // Vibrate on ring (native only)
     if (Platform.OS !== 'web') {
       Vibration.vibrate([0, 1000, 2000, 1000], true);
     }
@@ -132,12 +168,15 @@ export default function IncomingCallScreen() {
 
   const handleAccept = () => {
     if (Platform.OS !== 'web') Vibration.cancel();
+    // Tell CallKit the call was answered
+    if (callUUID) answerCall(callUUID);
     router.replace({
       pathname: '/live-call',
       params: {
         callerName,
         callerNumber,
         direction: 'inbound',
+        callUUID: callUUID ?? '',
         contactId: contact?.id ?? '',
       },
     });
@@ -145,11 +184,13 @@ export default function IncomingCallScreen() {
 
   const handleGhost = () => {
     if (Platform.OS !== 'web') Vibration.cancel();
+    if (callUUID) answerCall(callUUID);
     router.replace({ pathname: '/ghost-mode' });
   };
 
   const handleDecline = () => {
     if (Platform.OS !== 'web') Vibration.cancel();
+    if (callUUID) reportCallEnded(callUUID, 'unanswered');
     router.back();
   };
 
@@ -157,12 +198,13 @@ export default function IncomingCallScreen() {
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <View style={[styles.inner, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
 
-        {/* Pre-screen Alert */}
-        {communityAlert && (
+        {/* Community Threat Alert */}
+        {!threatLoading && communityThreat && communityThreat.report_count > 0 && (
           <Animated.View style={[styles.alertBanner, { transform: [{ translateY: slideAnim }] }]}>
             <MaterialIcons name="warning" size={16} color={Colors.danger} />
             <Text style={styles.alertText}>
-              Community Alert: {communityAlert.reportCount.toLocaleString()} reports · {communityAlert.scamType}
+              Community Alert: {communityThreat.report_count.toLocaleString()} reports
+              {communityThreat.scam_type ? ` · ${communityThreat.scam_type}` : ''}
             </Text>
           </Animated.View>
         )}
@@ -181,7 +223,7 @@ export default function IncomingCallScreen() {
             borderColor: threatColor, transform: [{ scale: ring2 }], opacity: ring2Opacity,
           }]} />
           <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-            <ContactAvatar contact={contact} size={100} />
+            <ContactAvatar contact={contact} size={100} threatColor={threatColor} />
           </Animated.View>
         </View>
 
@@ -192,19 +234,23 @@ export default function IncomingCallScreen() {
           {contact?.org && <Text style={styles.callerOrg}>{contact.org}</Text>}
         </View>
 
-        {/* SENTINEL Pre-Screen Dossier */}
+        {/* SENTINEL™ Pre-Screen Dossier */}
         <View style={[styles.dossier, { borderColor: threatColor + '44' }]}>
           <View style={styles.dossierHeader}>
             <MaterialIcons name="security" size={14} color={Colors.primary} />
             <Text style={styles.dossierTitle}>SENTINEL™ Pre-Screen</Text>
-            <View style={[styles.dossierLevel, {
-              backgroundColor: threatColor + '22', borderColor: threatColor + '44',
-            }]}>
-              <View style={[styles.dossierDot, { backgroundColor: threatColor }]} />
-              <Text style={[styles.dossierLevelText, { color: threatColor }]}>
-                {SentinelEngine.getThreatLabel(preThreatLevel)}
-              </Text>
-            </View>
+            {threatLoading ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+              <View style={[styles.dossierLevel, {
+                backgroundColor: threatColor + '22', borderColor: threatColor + '44',
+              }]}>
+                <View style={[styles.dossierDot, { backgroundColor: threatColor }]} />
+                <Text style={[styles.dossierLevelText, { color: threatColor }]}>
+                  {SentinelEngine.getThreatLabel(preThreatLevel)}
+                </Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.dossierRows}>
@@ -223,11 +269,15 @@ export default function IncomingCallScreen() {
             <View style={styles.dossierRow}>
               <MaterialIcons name="groups" size={13} color={Colors.textMuted} />
               <Text style={styles.dossierLabel}>Community</Text>
-              <Text style={[styles.dossierValue, { color: communityAlert ? Colors.danger : Colors.safe }]}>
-                {communityAlert
-                  ? `${communityAlert.reportCount.toLocaleString()} reports`
-                  : 'No reports'}
-              </Text>
+              {threatLoading ? (
+                <ActivityIndicator size="small" color={Colors.textMuted} style={{ marginLeft: 4 }} />
+              ) : (
+                <Text style={[styles.dossierValue, { color: communityThreat ? Colors.danger : Colors.safe }]}>
+                  {communityThreat
+                    ? `${communityThreat.report_count.toLocaleString()} reports`
+                    : 'No reports found'}
+                </Text>
+              )}
             </View>
             {contact?.shieldScore !== undefined && (
               <View style={styles.dossierRow}>
@@ -236,12 +286,18 @@ export default function IncomingCallScreen() {
                 <Text style={[styles.dossierValue, { color: Colors.safe }]}>{contact.shieldScore}/100</Text>
               </View>
             )}
+            {communityThreat?.scam_type && (
+              <View style={styles.dossierRow}>
+                <MaterialIcons name="local-police" size={13} color={Colors.danger} />
+                <Text style={styles.dossierLabel}>Scam Type</Text>
+                <Text style={[styles.dossierValue, { color: Colors.danger }]}>{communityThreat.scam_type}</Text>
+              </View>
+            )}
           </View>
         </View>
 
         {/* Action Buttons */}
         <View style={styles.actions}>
-          {/* Decline */}
           <View style={styles.actionGroup}>
             <TouchableOpacity style={styles.declineBtn} onPress={handleDecline} activeOpacity={0.85}>
               <MaterialIcons name="call-end" size={28} color="#fff" />
@@ -249,15 +305,13 @@ export default function IncomingCallScreen() {
             <Text style={styles.actionLabel}>Decline</Text>
           </View>
 
-          {/* Ghost Mode */}
           <View style={styles.actionGroup}>
             <TouchableOpacity style={styles.ghostBtn} onPress={handleGhost} activeOpacity={0.85}>
               <MaterialIcons name="hearing" size={24} color={Colors.primary} />
             </TouchableOpacity>
-            <Text style={[styles.actionLabel, { color: Colors.primary }]}>Ghost</Text>
+            <Text style={[styles.actionLabel, { color: Colors.primary }]}>Ghost AI</Text>
           </View>
 
-          {/* Accept */}
           <View style={styles.actionGroup}>
             <TouchableOpacity style={styles.acceptBtn} onPress={handleAccept} activeOpacity={0.85}>
               <MaterialIcons name="phone" size={28} color="#fff" />
@@ -266,9 +320,8 @@ export default function IncomingCallScreen() {
           </View>
         </View>
 
-        {/* Ghost Mode hint */}
         <Text style={styles.ghostHint}>
-          Tap Ghost to have AI answer while you listen
+          Ghost AI answers while SENTINEL™ analyzes in real-time
         </Text>
       </View>
     </Animated.View>
@@ -291,12 +344,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5, textTransform: 'uppercase',
   },
 
-  avatarSection: {
-    width: 140, height: 140, alignItems: 'center', justifyContent: 'center',
-  },
-  ring: {
-    position: 'absolute', width: 140, height: 140, borderRadius: 70, borderWidth: 2,
-  },
+  avatarSection: { width: 140, height: 140, alignItems: 'center', justifyContent: 'center' },
+  ring: { position: 'absolute', width: 140, height: 140, borderRadius: 70, borderWidth: 2 },
   avatarBase: { borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
 
   callerInfo: { alignItems: 'center', gap: 4 },
@@ -318,12 +367,11 @@ const styles = StyleSheet.create({
   dossierLevelText: { fontSize: FontSize.xs, fontWeight: FontWeight.extrabold, letterSpacing: 0.5 },
   dossierRows: { gap: 8 },
   dossierRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dossierLabel: { fontSize: FontSize.xs, color: Colors.textMuted, width: 64 },
+  dossierLabel: { fontSize: FontSize.xs, color: Colors.textMuted, width: 74 },
   dossierValue: { flex: 1, fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.textSecondary },
 
   actions: {
-    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center',
-    gap: Spacing.xxl,
+    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: Spacing.xxl,
   },
   actionGroup: { alignItems: 'center', gap: 8 },
   declineBtn: {

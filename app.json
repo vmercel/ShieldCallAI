@@ -1,22 +1,52 @@
 {
   "expo": {
-    "name": "onspace-app",
-    "slug": "onspace-app",
+    "name": "CallShield",
+    "slug": "callshield",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
-    "scheme": "onspaceapp",
-    "userInterfaceStyle": "automatic",
+    "scheme": "callshield",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.callshield.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "CallShield needs microphone access to analyze live calls with SENTINEL™ AI and detect scam voices in real-time.",
+        "NSContactsUsageDescription": "CallShield accesses your contacts to identify callers, show caller names, and help protect you from unknown numbers.",
+        "NSCameraUsageDescription": "CallShield may use the camera for future identity verification features.",
+        "NSSpeechRecognitionUsageDescription": "CallShield uses speech recognition to transcribe calls in real-time for SENTINEL™ AI threat analysis.",
+        "NSLocalNetworkUsageDescription": "CallShield may use local network for VoIP call routing.",
+        "UIBackgroundModes": ["voip", "audio", "fetch", "remote-notification", "processing"],
+        "BGTaskSchedulerPermittedIdentifiers": ["com.callshield.background-analysis"],
+        "CFBundleAllowMixedLocalizations": true,
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.developer.pushkit.voice-over-ip": true,
+        "aps-environment": "production"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#060E1E"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.callshield.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_CONTACTS",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.CALL_PHONE",
+        "android.permission.ANSWER_PHONE_CALLS",
+        "android.permission.MANAGE_OWN_CALLS",
+        "android.permission.BIND_TELECOM_CONNECTION_SERVICE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.USE_FULL_SCREEN_INTENT"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -31,10 +61,37 @@
           "image": "./assets/images/logo.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#060E1E"
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "CallShield needs microphone access to analyze live calls with SENTINEL™ AI and detect scam voices in real-time."
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "CallShield accesses your contacts to identify callers and protect you from unknown numbers."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/logo.png",
+          "color": "#00B4D8",
+          "defaultChannel": "callshield-alerts",
+          "sounds": ["./assets/sounds/alert.wav"]
+        }
+      ],
+      [
+        "react-native-callkeep",
+        {
+          "appName": "CallShield"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
