@@ -1,17 +1,16 @@
 /**
- * CALLSHIELD Live Call Screen — Enhanced Real-Time Analysis
+ * CALLSHIELD Live Call Screen — Claude SENTINEL™ AI Analysis
  *
- * Analysis Architecture (v2 — Fixed):
+ * Analysis Architecture (v3 — Claude Powered):
  * ─────────────────────────────────────────────────────────
- * • Batch-based: runs every 10 seconds OR when a pause > 1.5s is detected.
- * • SENTINEL™ always receives the FULL cumulative transcript (not just new
- *   segments), so every re-analysis has complete call context.
- * • Peak-score ratchet: the display score can never fall below 75% of the
- *   highest score ever reached. A scammer who shifts to neutral follow-up
- *   questions after establishing urgency cannot suddenly appear "safe".
- * • Content verdict uses both current AND peak score — "genuine" is only
- *   returned when BOTH are low throughout the entire call.
- * • Flags and fact-checks are cumulative across all batches (never lost).
+ * • Every 10 seconds, the current chunk is sent to Claude (claude-3-5-haiku)
+ *   via the sentinel-analysis Edge Function for real AI threat analysis.
+ * • Claude receives the FULL cumulative transcript + acoustic signals every batch.
+ * • Peak-score ratchet: Claude enforces 85% floor server-side; client adds 75% floor.
+ * • Result card updates on every Claude response — caller type, spam status,
+ *   content verdict, flags, and scam classification all come from Claude.
+ * • Local SENTINEL™ NLP engine runs in parallel as fallback if Claude is unavailable.
+ * • AcousticSentinel™ runs in real-time, contributing deepfake confidence to Claude.
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -30,6 +29,8 @@ import { findContactByNumber, getInitials, Contact } from '../constants/contacts
 import { useLiveTranscription, TranscriptSegment } from '../hooks/useLiveTranscription';
 import { callRecordsService } from '../services/callRecordsService';
 import { communityThreatsService, CommunityThreat } from '../services/communityThreatsService';
+import { supabase } from '../services/supabaseClient';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 
 function formatDuration(s: number) {
   return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
@@ -60,6 +61,8 @@ interface AnalysisResult {
   contextQuality: 'low' | 'medium' | 'high' | 'very_high';
   peakScore: number;
   lastUpdated: number;
+  poweredByClaude: boolean;
+  claudeReasoning?: string;
 }
 
 function buildEmptyResult(): AnalysisResult {
@@ -70,46 +73,8 @@ function buildEmptyResult(): AnalysisResult {
     spamStatus: 'checking', spamReportCount: 0,
     contentVerdict: 'insufficient', contentVerdictScore: 0,
     wordsAnalyzed: 0, batchCount: 0, contextQuality: 'low',
-    peakScore: 0, lastUpdated: 0,
+    peakScore: 0, lastUpdated: 0, poweredByClaude: false,
   };
-}
-
-// ─── Caller Type Detector ─────────────────────────────────────────────────────
-function detectCallerType(
-  acousticDeepfakeConfidence: number,
-  segments: TranscriptSegment[],
-  acousticStress: number,
-): { type: CallerType; confidence: number } {
-  if (segments.length < 2) return { type: 'unknown', confidence: 0 };
-
-  const acousticSignal = acousticDeepfakeConfidence;
-  const callerSegments = segments.filter(s => s.isFinal && s.speaker === 'A');
-
-  let timingVarianceScore = 0;
-  if (callerSegments.length >= 3) {
-    const gaps: number[] = [];
-    for (let i = 1; i < callerSegments.length; i++) {
-      gaps.push(callerSegments[i].timestamp - callerSegments[i - 1].timestamp);
-    }
-    const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
-    const variance = gaps.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / gaps.length;
-    const cv = Math.sqrt(variance) / (mean || 1);
-    timingVarianceScore = cv < 0.25 ? 70 : cv < 0.4 ? 35 : 10;
-  }
-
-  const allWords = callerSegments.flatMap(s => s.text.toLowerCase().split(/\s+/));
-  const uniqueWords = new Set(allWords);
-  const diversityRatio = allWords.length > 0 ? uniqueWords.size / allWords.length : 1;
-  const vocabScore = diversityRatio < 0.5 ? 50 : diversityRatio < 0.65 ? 25 : 0;
-  const stressScore = acousticStress < 10 && callerSegments.length >= 3 ? 40 : 0;
-
-  const syntheticConfidence = Math.min(100, Math.round(
-    acousticSignal * 0.45 + timingVarianceScore * 0.25 + vocabScore * 0.15 + stressScore * 0.15
-  ));
-
-  if (syntheticConfidence >= 55) return { type: 'ai_synthetic', confidence: syntheticConfidence };
-  if (callerSegments.length >= 3) return { type: 'human', confidence: Math.min(90, 100 - syntheticConfidence) };
-  return { type: 'unknown', confidence: 0 };
 }
 
 // ─── Context Quality ──────────────────────────────────────────────────────────
@@ -120,35 +85,35 @@ function getContextQuality(words: number, batches: number): AnalysisResult['cont
   return 'low';
 }
 
-// ─── Content Verdict (Peak-Aware) ─────────────────────────────────────────────
-/**
- * Uses BOTH current AND peak score for verdict.
- * "Genuine" can ONLY be returned if both scores are consistently low.
- * A scam call that established urgency early is never re-classified as
- * genuine just because the scammer shifted to neutral-sounding follow-ups.
- */
-function getContentVerdict(
-  currentScore: number,
-  peakScore: number,
-  batches: number,
-): { verdict: ContentVerdict; confidence: number } {
-  if (batches < 1) return { verdict: 'insufficient', confidence: 0 };
-
-  // Effective score = max(current, 80% of peak).
-  // This prevents verdict downgrade when scammer shifts tone.
-  const effectiveScore = Math.max(currentScore, Math.round(peakScore * 0.80));
-
-  if (effectiveScore >= 65) {
-    return { verdict: 'scam', confidence: Math.min(99, effectiveScore + batches * 4) };
+// ─── Claude SENTINEL™ Edge Function Call ─────────────────────────────────────
+async function callClaudeSentinel(params: {
+  currentChunk: string;
+  fullTranscript: string;
+  previousRiskScore: number;
+  peakRiskScore: number;
+  batchIndex: number;
+  deepfakeConfidence: number;
+  acousticStress: number;
+  spamReportCount: number;
+  callerNumber: string;
+  callDirection: string;
+  durationSeconds: number;
+}): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('sentinel-analysis', { body: params });
+    if (error) {
+      let msg = error.message;
+      if (error instanceof FunctionsHttpError) {
+        try { msg = await error.context?.text(); } catch {}
+      }
+      console.warn('Claude SENTINEL error:', msg);
+      return null;
+    }
+    return data;
+  } catch (e) {
+    console.warn('Claude SENTINEL exception:', e);
+    return null;
   }
-  if (effectiveScore >= 35) {
-    return { verdict: 'suspicious', confidence: Math.min(85, effectiveScore + batches * 3) };
-  }
-  // Genuine: only when BOTH current AND peak have been low all along
-  if (batches >= 2 && peakScore < 30 && currentScore < 30) {
-    return { verdict: 'genuine', confidence: Math.min(88, (100 - effectiveScore) * 0.8 + batches * 4) };
-  }
-  return { verdict: 'insufficient', confidence: 20 + batches * 8 };
 }
 
 // ─── Animated Waveform Bar ────────────────────────────────────────────────────
@@ -292,12 +257,18 @@ function ResultCard({ result, isAnalyzing }: { result: AnalysisResult; isAnalyzi
               <Text style={styles.peakText}>PEAK {result.peakScore}%</Text>
             </View>
           )}
+          {result.poweredByClaude && (
+            <View style={styles.claudeBadge}>
+              <MaterialIcons name="auto-awesome" size={9} color={Colors.primary} />
+              <Text style={styles.claudeText}>CLAUDE</Text>
+            </View>
+          )}
         </View>
         <View>
           {isAnalyzing ? (
             <View style={styles.analyzingBadge}>
               <View style={styles.analyzingDot} />
-              <Text style={styles.analyzingText}>ANALYZING</Text>
+              <Text style={styles.analyzingText}>CLAUDE AI</Text>
             </View>
           ) : result.batchCount > 0 ? (
             <View style={[styles.contextBadge, { borderColor: contextColor + '55' }]}>
@@ -345,11 +316,19 @@ function ResultCard({ result, isAnalyzing }: { result: AnalysisResult; isAnalyzi
       {result.batchCount > 0 && (
         <View style={styles.confidenceRow}>
           <MaterialIcons name="signal-cellular-alt" size={12} color={Colors.textMuted} />
-          <Text style={styles.confidenceLabel}>{result.confidenceLabel}</Text>
+          <Text style={styles.confidenceLabel} numberOfLines={1}>{result.confidenceLabel}</Text>
           <View style={styles.confidenceTrack}>
             <View style={[styles.confidenceFill, { width: `${result.contentVerdictScore}%`, backgroundColor: verdictColor }]} />
           </View>
           <Text style={styles.batchCount}>B{result.batchCount} · {result.wordsAnalyzed}w</Text>
+        </View>
+      )}
+
+      {/* Claude reasoning snippet */}
+      {result.claudeReasoning && result.batchCount > 0 && (
+        <View style={styles.reasoningRow}>
+          <MaterialIcons name="auto-awesome" size={11} color={Colors.primary} />
+          <Text style={styles.reasoningText} numberOfLines={2}>{result.claudeReasoning}</Text>
         </View>
       )}
 
@@ -378,9 +357,9 @@ function ResultCard({ result, isAnalyzing }: { result: AnalysisResult; isAnalyzi
         </View>
       )}
 
-      {result.contextQuality === 'low' && result.batchCount === 0 && (
+      {result.batchCount === 0 && (
         <Text style={styles.listeningHint}>
-          Analysis every 10s or on pause · score never drops below 75% of peak
+          Claude AI analyzes every 10s · risk never drops below 75% of peak
         </Text>
       )}
     </Animated.View>
@@ -422,17 +401,17 @@ export default function LiveCallScreen() {
   const [spamChecked, setSpamChecked] = useState(false);
 
   // Batch state
-  const batchBufferRef = useRef<string[]>([]);
+  const batchBufferRef = useRef<string[]>([]);        // Words in current 10s window
   const batchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const batchCountRef = useRef(0);
-  const allSegmentsRef = useRef<string[]>([]);
+  const allSegmentsRef = useRef<string[]>([]);        // Full call transcript accumulator
   const wordsAnalyzedRef = useRef(0);
   const acousticStressRef = useRef(0);
   const deepfakeRef = useRef(0);
-  const transcriptionSegmentsRef = useRef<TranscriptSegment[]>([]);
-  /** Peak display score — ratchet floor = 75% of this */
-  const peakScoreRef = useRef(0);
+  const durationRef = useRef(0);
+  const peakScoreRef = useRef(0);                     // Highest score ever seen — ratchet anchor
+  const isAnalyzingRef = useRef(false);               // Guard against concurrent Claude calls
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const listenDotAnim = useRef(new Animated.Value(1)).current;
@@ -449,71 +428,118 @@ export default function LiveCallScreen() {
     });
   }, [callerNumber]);
 
-  // ── Core batch analysis ──────────────────────────────────────────────────
-  const runBatchAnalysis = useCallback(() => {
+  // ── Core batch analysis — powered by Claude (Anthropic) ──────────────────
+  const runBatchAnalysis = useCallback(async () => {
+    if (isAnalyzingRef.current) return;  // Prevent concurrent calls
+
     const newText = batchBufferRef.current.join(' ');
     const newWords = newText.split(/\s+/).filter(Boolean).length;
 
-    // Need either new words, or at least 1 previous batch + something changed (spam check done)
-    if (newWords === 0 && batchCountRef.current === 0) return;
+    if (newWords === 0 && batchCountRef.current === 0 && !spamChecked) return;
 
+    isAnalyzingRef.current = true;
     setIsAnalyzing(true);
 
-    // KEY FIX: Feed new text to engine (engine internally appends to cumulative).
-    // For the first batch after spam check completes with no new words,
-    // feed a zero-length string to trigger re-analysis of cumulative.
+    // Also feed to local SENTINEL engine for fallback signal
     sentinelRef.current.ingestSegment(newText);
+    const localAnalysis = sentinelRef.current.analyzeConversation();
 
+    const currentChunk = newText;
+    const fullTranscript = allSegmentsRef.current.join(' ');
+
+    // Advance batch counter and clear buffer BEFORE the async call
     batchBufferRef.current = [];
     batchCountRef.current += 1;
     wordsAnalyzedRef.current += newWords;
 
-    const analysis = sentinelRef.current.analyzeConversation();
-
-    // Caller type detection
-    const { type: callerType, confidence: callerTypeConf } = detectCallerType(
-      deepfakeRef.current,
-      transcriptionSegmentsRef.current,
-      acousticStressRef.current,
-    );
-
-    // Spam status
+    // Spam status (from community DB)
     const spamStatus: SpamStatus = !spamChecked ? 'checking'
       : spamRecord ? (spamRecord.report_count >= 100 ? 'spam' : 'suspicious')
       : 'clean';
 
-    // Context quality
     const contextQuality = getContextQuality(wordsAnalyzedRef.current, batchCountRef.current);
 
-    // All flags — engine already accumulates these, plus acoustic
-    const allFlags = [...new Set([...analysis.allFlags, ...acousticFlags])];
+    // ── Call Claude SENTINEL™ Edge Function ──
+    const claudeResult = await callClaudeSentinel({
+      currentChunk,
+      fullTranscript,
+      previousRiskScore: peakScoreRef.current > 0
+        ? Math.max(Math.round(peakScoreRef.current * 0.85), localAnalysis.compositeScore)
+        : localAnalysis.compositeScore,
+      peakRiskScore: peakScoreRef.current,
+      batchIndex: batchCountRef.current - 1,
+      deepfakeConfidence: deepfakeRef.current,
+      acousticStress: acousticStressRef.current,
+      spamReportCount: spamRecord?.report_count ?? 0,
+      callerNumber,
+      callDirection: direction,
+      durationSeconds: durationRef.current,
+    });
 
-    // ── PEAK RATCHET ──
-    // The raw composite from the engine already includes a 70% ratchet internally.
-    // Apply an additional 75% ratchet at display level for full protection.
-    const rawScore = analysis.compositeScore;
-    const ratchetFloor = Math.round(peakScoreRef.current * 0.75);
-    const displayScore = Math.max(rawScore, ratchetFloor);
+    // ── Merge Claude result with local SENTINEL + acoustic ──
+    let displayScore: number;
+    let flags: string[];
+    let factChecks: string[];
+    let scamType: string | null;
+    let trajectoryLabel: 'rising' | 'stable' | 'falling';
+    let confidenceLabel: string;
+    let callerType: CallerType;
+    let callerTypeConfidence: number;
+    let contentVerdict: ContentVerdict;
+    let contentVerdictScore: number;
+    let poweredByClaude: boolean;
+    let claudeReasoning: string | undefined;
+
+    if (claudeResult && typeof claudeResult.riskScore === 'number') {
+      // Claude responded — primary source
+      const ratchetFloor = Math.round(peakScoreRef.current * 0.75);
+      displayScore = Math.max(claudeResult.riskScore as number, ratchetFloor);
+      flags = [...new Set([
+        ...((claudeResult.flags as string[]) || []),
+        ...acousticFlags,
+      ])];
+      factChecks = (claudeResult.factChecks as string[]) || [];
+      scamType = (claudeResult.scamType as string) || null;
+      trajectoryLabel = (claudeResult.trajectoryLabel as 'rising' | 'stable' | 'falling') || 'stable';
+      confidenceLabel = (claudeResult.confidenceLabel as string) || 'Claude SENTINEL™';
+      callerType = (claudeResult.callerType as CallerType) || 'unknown';
+      callerTypeConfidence = (claudeResult.callerTypeConfidence as number) || 0;
+      contentVerdict = (claudeResult.contentVerdict as ContentVerdict) || 'insufficient';
+      contentVerdictScore = (claudeResult.contentVerdictConfidence as number) || 0;
+      poweredByClaude = true;
+      claudeReasoning = (claudeResult.reasoning as string) || undefined;
+    } else {
+      // Fallback to local SENTINEL engine
+      const ratchetFloor = Math.round(peakScoreRef.current * 0.75);
+      displayScore = Math.max(localAnalysis.compositeScore, ratchetFloor);
+      flags = [...new Set([...localAnalysis.allFlags, ...acousticFlags])];
+      factChecks = localAnalysis.allFactChecks;
+      scamType = localAnalysis.scamType;
+      trajectoryLabel = localAnalysis.trajectoryLabel;
+      confidenceLabel = `${localAnalysis.confidenceLabel} (local)`;
+      callerType = 'unknown';
+      callerTypeConfidence = 0;
+      contentVerdict = displayScore >= 65 ? 'scam' : displayScore >= 35 ? 'suspicious'
+        : batchCountRef.current >= 2 ? 'genuine' : 'insufficient';
+      contentVerdictScore = Math.min(95, displayScore + batchCountRef.current * 5);
+      poweredByClaude = false;
+      claudeReasoning = undefined;
+    }
+
+    // Update peak ratchet anchor
     if (displayScore > peakScoreRef.current) peakScoreRef.current = displayScore;
-
     const displayLevel: ThreatLevel = displayScore >= 65 ? 'danger' : displayScore >= 30 ? 'warning' : 'safe';
-
-    const { verdict: contentVerdict, confidence: contentVerdictScore } = getContentVerdict(
-      displayScore,
-      peakScoreRef.current,
-      batchCountRef.current,
-    );
 
     const newResult: AnalysisResult = {
       score: displayScore,
       level: displayLevel,
-      flags: allFlags,
-      factChecks: analysis.allFactChecks,
-      scamType: analysis.scamType,
-      trajectoryLabel: analysis.trajectoryLabel,
-      confidenceLabel: analysis.confidenceLabel,
+      flags,
+      factChecks,
+      scamType,
+      trajectoryLabel,
+      confidenceLabel,
       callerType,
-      callerTypeConfidence: callerTypeConf,
+      callerTypeConfidence,
       spamStatus,
       spamReportCount: spamRecord?.report_count ?? 0,
       contentVerdict,
@@ -523,24 +549,28 @@ export default function LiveCallScreen() {
       contextQuality,
       peakScore: peakScoreRef.current,
       lastUpdated: Date.now(),
+      poweredByClaude,
+      claudeReasoning,
     };
 
     setResult(newResult);
+    isAnalyzingRef.current = false;
     setIsAnalyzing(false);
 
-    if (analysis.allFactChecks.length > 0) {
-      setActiveFactCheck(analysis.allFactChecks[0]);
+    if (factChecks.length > 0) {
+      setActiveFactCheck(factChecks[0]);
       setShowFactCheck(true);
       factCheckTimer.current && clearTimeout(factCheckTimer.current);
       factCheckTimer.current = setTimeout(() => setShowFactCheck(false), 9000);
     }
-  }, [acousticFlags, spamChecked, spamRecord]);
+  }, [acousticFlags, spamChecked, spamRecord, callerNumber, direction]);
 
-  // ── Handle new speech segment ────────────────────────────────────────────
-  const handleSegment = useCallback((text: string, speaker: 'A' | 'B') => {
+  // ── Handle new speech segment ─────────────────────────────────────────────
+  const handleSegment = useCallback((text: string, _speaker: 'A' | 'B') => {
     batchBufferRef.current.push(text);
     allSegmentsRef.current.push(text);
     pauseTimerRef.current && clearTimeout(pauseTimerRef.current);
+    // Flush to Claude immediately on a 1.5s natural speech pause
     pauseTimerRef.current = setTimeout(() => {
       if (batchBufferRef.current.length > 0) runBatchAnalysis();
     }, 1500);
@@ -548,28 +578,30 @@ export default function LiveCallScreen() {
 
   const transcription = useLiveTranscription(handleSegment);
 
-  useEffect(() => {
-    transcriptionSegmentsRef.current = transcription.segments;
-  }, [transcription.segments]);
-
-  // 10-second batch timer
+  // 10-second clock-based batch timer — guarantees updates even during continuous speech
   useEffect(() => {
     batchTimerRef.current = setInterval(() => {
-      if (allSegmentsRef.current.length > 0) runBatchAnalysis();
+      if (allSegmentsRef.current.length > 0 || batchCountRef.current > 0) {
+        runBatchAnalysis();
+      }
     }, 10000);
     return () => { batchTimerRef.current && clearInterval(batchTimerRef.current); };
   }, [runBatchAnalysis]);
 
-  // Re-run when spam check completes
+  // Re-run when spam check completes so result card updates spam status immediately
   useEffect(() => {
     if (spamChecked && batchCountRef.current > 0) runBatchAnalysis();
-  }, [spamChecked, spamRecord]);
+  }, [spamChecked]);
 
-  // Sync acoustic refs
+  // Sync acoustic + duration refs
   useEffect(() => {
     acousticStressRef.current = acousticStress;
     deepfakeRef.current = deepfakeConfidence;
   }, [acousticStress, deepfakeConfidence]);
+
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
 
   // ── Mount ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -651,18 +683,20 @@ export default function LiveCallScreen() {
       started_at: new Date(Date.now() - duration * 1000).toISOString(),
       ended_at: new Date().toISOString(),
       duration_seconds: duration,
-      threat_level: finalAnalysis.level,
-      threat_score: Math.max(finalAnalysis.compositeScore, peakScoreRef.current),
-      scam_type: finalAnalysis.scamType,
-      summary: finalAnalysis.allFlags.length > 0
-        ? `SENTINEL™ detected: ${finalAnalysis.allFlags.slice(0, 3).join(', ')}. Peak threat: ${peakScoreRef.current}%.`
+      threat_level: result.level,
+      threat_score: Math.max(result.score, peakScoreRef.current),
+      scam_type: result.scamType || finalAnalysis.scamType,
+      summary: result.claudeReasoning
+        ? `Claude SENTINEL™: ${result.claudeReasoning}. Peak threat: ${peakScoreRef.current}%.`
+        : result.flags.length > 0
+        ? `SENTINEL™ detected: ${result.flags.slice(0, 3).join(', ')}. Peak threat: ${peakScoreRef.current}%.`
         : 'No threat indicators detected. Call appeared legitimate.',
-      ai_notes: finalAnalysis.allFactChecks.length > 0 ? finalAnalysis.allFactChecks[0] : undefined,
-      tags: finalAnalysis.dominantCategory ? [finalAnalysis.dominantCategory.replace(/_/g, ' ')] : [],
+      ai_notes: result.factChecks.length > 0 ? result.factChecks[0] : undefined,
+      tags: result.scamType ? [result.scamType] : (finalAnalysis.dominantCategory ? [finalAnalysis.dominantCategory.replace(/_/g, ' ')] : []),
       ghost_handled: false,
       transcript: transcriptData,
-      flags: finalAnalysis.allFlags,
-      fact_checks: finalAnalysis.allFactChecks,
+      flags: result.flags,
+      fact_checks: result.factChecks,
       is_blocked: false,
       reported_to_ftc: false,
     }).catch(() => {});
@@ -683,9 +717,9 @@ export default function LiveCallScreen() {
           <View style={styles.headerCenter}>
             <View style={styles.sentinelBadge}>
               <Animated.View style={[styles.listenDot, { opacity: listenDotAnim, backgroundColor: isAnalyzing ? Colors.warning : Colors.primary }]} />
-              <MaterialIcons name="security" size={11} color={isAnalyzing ? Colors.warning : Colors.primary} />
+              <MaterialIcons name="auto-awesome" size={11} color={isAnalyzing ? Colors.warning : Colors.primary} />
               <Text style={[styles.sentinelLabel, { color: isAnalyzing ? Colors.warning : Colors.primary }]}>
-                {isAnalyzing ? 'ANALYZING BATCH' : isWebSTT && transcription.isListening ? 'AUTO-ANALYZING' : 'SENTINEL™ ACTIVE'}
+                {isAnalyzing ? 'CLAUDE ANALYZING' : isWebSTT && transcription.isListening ? 'CLAUDE SENTINEL™' : 'SENTINEL™ ACTIVE'}
               </Text>
             </View>
             <View style={[styles.directionBadge, direction === 'outbound' ? styles.outboundBadge : styles.inboundBadge]}>
@@ -749,14 +783,16 @@ export default function LiveCallScreen() {
                 opacity: listenDotAnim,
               }]} />
               <Text style={[styles.listeningLabel, { color: transcription.isListening ? Colors.primary : Colors.textMuted }]}>
-                {transcription.isListening ? 'Listening · 10s batches · score ratcheted to peak' : 'Starting...'}
+                {transcription.isListening ? 'Claude SENTINEL™ · 10s AI batches · real-time analysis' : 'Starting...'}
               </Text>
               <Text style={styles.wordCountText}>{transcription.wordCount}w · B{result.batchCount}</Text>
             </>
           ) : (
             <>
               <MaterialIcons name="graphic-eq" size={13} color={Colors.primary} />
-              <Text style={[styles.listeningLabel, { color: Colors.primary }]}>Auto-analyzing · acoustic monitoring · {result.batchCount} batches</Text>
+              <Text style={[styles.listeningLabel, { color: Colors.primary }]}>
+                Claude SENTINEL™ · acoustic monitoring · {result.batchCount} batches
+              </Text>
             </>
           )}
         </View>
@@ -780,17 +816,20 @@ export default function LiveCallScreen() {
                       borderWidth: 2, borderColor: Colors.bgCard, opacity: listenDotAnim,
                     }} />
                   </View>
-                  <Text style={styles.emptyTitle}>SENTINEL™ is listening</Text>
+                  <Text style={styles.emptyTitle}>Claude SENTINEL™ is listening</Text>
                   <Text style={styles.emptySubtitle}>
-                    Speak naturally. Score updates every 10 seconds.{'\n'}
-                    Risk score never drops below 75% of peak.
+                    Claude AI analyzes every 10-second batch.{'\n'}
+                    Risk score never drops below 75% of historical peak.
                   </Text>
                 </>
               ) : (
                 <>
                   <MaterialIcons name="graphic-eq" size={32} color={Colors.primary} />
-                  <Text style={styles.emptyTitle}>SENTINEL™ is listening</Text>
-                  <Text style={styles.emptySubtitle}>Audio is analyzed in real-time.{"\n"}Score updates every 10 seconds automatically.</Text>
+                  <Text style={styles.emptyTitle}>Claude SENTINEL™ is listening</Text>
+                  <Text style={styles.emptySubtitle}>
+                    Claude AI analyzes audio in real-time.{'\n'}
+                    Score updates every 10 seconds automatically.
+                  </Text>
                 </>
               )}
             </View>
@@ -819,7 +858,7 @@ export default function LiveCallScreen() {
           ) : null}
         </ScrollView>
 
-        {/* Manual note — optional fallback, only when toggled */}
+        {/* Optional note input — accessible via voice */}
         {showManual && (
           <View style={styles.manualInputRow}>
             <TextInput
@@ -898,6 +937,8 @@ const styles = StyleSheet.create({
   risingText: { fontSize: 9, fontWeight: FontWeight.extrabold, color: Colors.danger, letterSpacing: 0.5 },
   peakBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.warningGlow, borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: Colors.warning + '44' },
   peakText: { fontSize: 9, fontWeight: FontWeight.extrabold, color: Colors.warning, letterSpacing: 0.5 },
+  claudeBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.primaryGlow, borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: Colors.primary + '44' },
+  claudeText: { fontSize: 9, fontWeight: FontWeight.extrabold, color: Colors.primary, letterSpacing: 0.5 },
   analyzingBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.warningGlow, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: Colors.warning + '44' },
   analyzingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.warning },
   analyzingText: { fontSize: 9, fontWeight: FontWeight.extrabold, color: Colors.warning, letterSpacing: 0.5 },
@@ -918,6 +959,9 @@ const styles = StyleSheet.create({
   confidenceFill: { height: '100%', borderRadius: 2 },
   batchCount: { fontSize: 9, color: Colors.textMuted, fontWeight: FontWeight.bold },
 
+  reasoningRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: Colors.primaryGlow + '88', borderRadius: Radius.sm, paddingHorizontal: 8, paddingVertical: 5 },
+  reasoningText: { flex: 1, fontSize: 10, color: Colors.primary, lineHeight: 14, fontStyle: 'italic' },
+
   flagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
   flagChip: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: Radius.full, borderWidth: 1 },
   flagText: { fontSize: 9, fontWeight: FontWeight.semibold },
@@ -932,7 +976,6 @@ const styles = StyleSheet.create({
   listenPulse: { width: 7, height: 7, borderRadius: 3.5 },
   listeningLabel: { flex: 1, fontSize: 10, fontWeight: FontWeight.semibold, lineHeight: 14 },
   wordCountText: { fontSize: 9, color: Colors.textMuted },
-  addBtn: { width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primaryGlow, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.borderStrong },
 
   transcript: { flex: 1, marginHorizontal: Spacing.md, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.xs },
   transcriptContent: { padding: Spacing.sm, gap: Spacing.sm },
