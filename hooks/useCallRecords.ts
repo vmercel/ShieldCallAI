@@ -1,15 +1,18 @@
 /**
  * useCallRecords — Hook for real Supabase call records
- * Provides: real call list, stats, and methods to save/update calls
+ * Provides: real call list, stats, network error handling, and methods to save/update calls
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { callRecordsService, CallRecord } from '../services/callRecordsService';
 
+export type NetworkStatus = 'idle' | 'loading' | 'success' | 'error' | 'offline';
+
 export function useCallRecords() {
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [networkStatus, setNetworkStatus] = useState<NetworkStatus>('idle');
 
   const [stats, setStats] = useState({
     totalCalls: 0,
@@ -23,23 +26,40 @@ export function useCallRecords() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setNetworkStatus('loading');
 
-    const [callsResult, statsResult] = await Promise.all([
-      callRecordsService.fetchAll(),
-      callRecordsService.getStats(),
-    ]);
+    try {
+      const [callsResult, statsResult] = await Promise.all([
+        callRecordsService.fetchAll(),
+        callRecordsService.getStats(),
+      ]);
 
-    if (callsResult.error) {
-      setError(callsResult.error);
-    } else {
-      setCalls(callsResult.data || []);
+      if (callsResult.error) {
+        // Distinguish network vs auth errors
+        const isOffline = callsResult.error.toLowerCase().includes('network') ||
+          callsResult.error.toLowerCase().includes('failed to fetch') ||
+          callsResult.error.toLowerCase().includes('fetch');
+        setError(callsResult.error);
+        setNetworkStatus(isOffline ? 'offline' : 'error');
+      } else {
+        setCalls(callsResult.data || []);
+        setNetworkStatus('success');
+      }
+
+      if (statsResult.data) {
+        setStats(statsResult.data);
+      }
+    } catch (e: any) {
+      const msg = e?.message || 'Failed to load calls';
+      setError(msg);
+      setNetworkStatus(
+        msg.toLowerCase().includes('network') || msg.toLowerCase().includes('fetch')
+          ? 'offline'
+          : 'error'
+      );
+    } finally {
+      setLoading(false);
     }
-
-    if (statsResult.data) {
-      setStats(statsResult.data);
-    }
-
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -50,7 +70,6 @@ export function useCallRecords() {
     const { data, error } = await callRecordsService.insert(record);
     if (!error && data) {
       setCalls(prev => [data, ...prev]);
-      // Refresh stats
       callRecordsService.getStats().then(r => {
         if (r.data) setStats(r.data);
       });
@@ -71,6 +90,7 @@ export function useCallRecords() {
     stats,
     loading,
     error,
+    networkStatus,
     refresh,
     saveCall,
     updateCall,

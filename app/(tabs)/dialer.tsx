@@ -241,7 +241,7 @@ function VoiceTab({ onDial, onContact }: { onDial: (num: string) => void; onCont
           {isListening
             ? '"Call Mom"   "Dial 415 555 0041"   "Ghost Mode"'
             : isManual
-            ? 'Voice recognition unavailable — type your command'
+            ? 'Speech recognition is not available on this platform. Type your command below.'
             : 'Say a name, number, or command'}
         </Text>
       </View>
