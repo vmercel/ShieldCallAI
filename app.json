@@ -82,14 +82,7 @@
         {
           "icon": "./assets/images/logo.png",
           "color": "#00B4D8",
-          "defaultChannel": "callshield-alerts",
-          "sounds": ["./assets/sounds/alert.wav"]
-        }
-      ],
-      [
-        "react-native-callkeep",
-        {
-          "appName": "CallShield"
+          "defaultChannel": "callshield-alerts"
         }
       ]
     ],

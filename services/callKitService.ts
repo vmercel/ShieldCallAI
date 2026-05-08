@@ -15,7 +15,14 @@
  */
 
 import { Platform } from 'react-native';
-import uuid from 'react-native-uuid';
+
+// Simple UUID v4 — avoids react-native-uuid ESM compatibility issues
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
 
 // react-native-callkeep conditionally imported (requires native build)
 let RNCallKeep: any = null;
@@ -82,7 +89,7 @@ export function displayIncomingCall(opts: {
   callerNumber: string;
   hasVideo?: boolean;
 }): string {
-  const callUUID = String(uuid.v4());
+  const callUUID = generateUUID();
   if (!RNCallKeep || Platform.OS === 'web') return callUUID;
 
   try {
@@ -106,7 +113,7 @@ export function startOutgoingCall(opts: {
   callerNumber: string;
   hasVideo?: boolean;
 }): string {
-  const callUUID = String(uuid.v4());
+  const callUUID = generateUUID();
   if (!RNCallKeep || Platform.OS === 'web') return callUUID;
 
   try {
