@@ -755,11 +755,8 @@ export default function LiveCallScreen() {
             </>
           ) : (
             <>
-              <MaterialIcons name="graphic-eq" size={13} color={Colors.warning} />
-              <Text style={styles.listeningLabel}>Acoustic monitoring · {result.batchCount} batches</Text>
-              <TouchableOpacity onPress={() => setShowManual(m => !m)} style={styles.addBtn}>
-                <MaterialIcons name={showManual ? 'remove' : 'add'} size={15} color={Colors.primary} />
-              </TouchableOpacity>
+              <MaterialIcons name="graphic-eq" size={13} color={Colors.primary} />
+              <Text style={[styles.listeningLabel, { color: Colors.primary }]}>Auto-analyzing · acoustic monitoring · {result.batchCount} batches</Text>
             </>
           )}
         </View>
@@ -791,9 +788,9 @@ export default function LiveCallScreen() {
                 </>
               ) : (
                 <>
-                  <MaterialIcons name="graphic-eq" size={32} color={Colors.warning} />
-                  <Text style={styles.emptyTitle}>Acoustic monitoring active</Text>
-                  <Text style={styles.emptySubtitle}>Tap + to add transcript text for analysis.</Text>
+                  <MaterialIcons name="graphic-eq" size={32} color={Colors.primary} />
+                  <Text style={styles.emptyTitle}>SENTINEL™ is listening</Text>
+                  <Text style={styles.emptySubtitle}>Audio is analyzed in real-time.{"\n"}Score updates every 10 seconds automatically.</Text>
                 </>
               )}
             </View>
@@ -822,14 +819,14 @@ export default function LiveCallScreen() {
           ) : null}
         </ScrollView>
 
-        {/* Manual input */}
-        {(showManual || (!isWebSTT && Platform.OS !== 'web')) && (
+        {/* Manual note — optional fallback, only when toggled */}
+        {showManual && (
           <View style={styles.manualInputRow}>
             <TextInput
               style={styles.manualInput}
               value={manualInput}
               onChangeText={setManualInput}
-              placeholder="Type transcript to analyze..."
+              placeholder="Add a note or correction..."
               placeholderTextColor={Colors.textMuted}
               returnKeyType="send"
               onSubmitEditing={handleManualSubmit}
