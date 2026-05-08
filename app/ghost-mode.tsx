@@ -1,7 +1,20 @@
-import React, { useEffect, useRef } from 'react';
+/**
+ * CALLSHIELD Ghost Mode Screen
+ *
+ * The AI persona answers the call automatically while the user listens.
+ * Caller audio is transcribed in real-time via Web Speech API (continuous mode)
+ * on web, and via AcousticSentinel on native — NO manual typing required.
+ *
+ * Every transcribed caller utterance is:
+ *  1. Fed to SENTINEL™ for real-time threat analysis
+ *  2. Sent to OnSpace AI (Ghost AI edge function) for contextual response
+ *  3. Spoken aloud via expo-speech TTS
+ */
+
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Animated, TextInput, KeyboardAvoidingView, Platform,
+  Animated, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -9,13 +22,24 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../constants/theme';
 import { useApp } from '../contexts/AppContext';
 import { useGhostMode } from '../hooks/useGhostMode';
+import { useLiveTranscription } from '../hooks/useLiveTranscription';
 import { SentinelEngine } from '../services/sentinelEngine';
 
 function formatDur(s: number) {
   return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
-// ─── Animated Waveform Ring ────────────────────────────────────────────────
+// ─── Animated Waveform Bar ─────────────────────────────────────────────────
+function WaveBar({ amplitude, color }: { amplitude: number; color: string }) {
+  const anim = useRef(new Animated.Value(amplitude)).current;
+  useEffect(() => {
+    Animated.timing(anim, { toValue: amplitude, duration: 80, useNativeDriver: false }).start();
+  }, [amplitude]);
+  const height = anim.interpolate({ inputRange: [0, 1], outputRange: [3, 28] });
+  return <Animated.View style={{ width: 3, height, borderRadius: 2, backgroundColor: color, marginHorizontal: 1.5 }} />;
+}
+
+// ─── Pulse Ring ────────────────────────────────────────────────────────────
 function PulseRing({ color, isActive }: { color: string; isActive: boolean }) {
   const scale1 = useRef(new Animated.Value(1)).current;
   const scale2 = useRef(new Animated.Value(1)).current;
@@ -24,24 +48,23 @@ function PulseRing({ color, isActive }: { color: string; isActive: boolean }) {
 
   useEffect(() => {
     if (!isActive) return;
-    const anim1 = Animated.loop(
+    const anim1 = Animated.loop(Animated.parallel([
+      Animated.timing(scale1, { toValue: 1.6, duration: 1400, useNativeDriver: true }),
+      Animated.timing(opacity1, { toValue: 0, duration: 1400, useNativeDriver: true }),
+    ]));
+    const anim2 = Animated.loop(Animated.sequence([
+      Animated.delay(700),
       Animated.parallel([
-        Animated.timing(scale1, { toValue: 1.6, duration: 1400, useNativeDriver: true }),
-        Animated.timing(opacity1, { toValue: 0, duration: 1400, useNativeDriver: true }),
-      ])
-    );
-    const anim2 = Animated.loop(
-      Animated.sequence([
-        Animated.delay(700),
-        Animated.parallel([
-          Animated.timing(scale2, { toValue: 1.9, duration: 1400, useNativeDriver: true }),
-          Animated.timing(opacity2, { toValue: 0, duration: 1400, useNativeDriver: true }),
-        ]),
-      ])
-    );
-    anim1.start();
-    anim2.start();
-    return () => { anim1.stop(); anim2.stop(); scale1.setValue(1); scale2.setValue(1); opacity1.setValue(0.6); opacity2.setValue(0.4); };
+        Animated.timing(scale2, { toValue: 1.9, duration: 1400, useNativeDriver: true }),
+        Animated.timing(opacity2, { toValue: 0, duration: 1400, useNativeDriver: true }),
+      ]),
+    ]));
+    anim1.start(); anim2.start();
+    return () => {
+      anim1.stop(); anim2.stop();
+      scale1.setValue(1); scale2.setValue(1);
+      opacity1.setValue(0.6); opacity2.setValue(0.4);
+    };
   }, [isActive, color]);
 
   return (
@@ -68,6 +91,60 @@ function IntelCard({ label, value, icon, color }: { label: string; value: string
   );
 }
 
+// ─── Listening Status Bar ─────────────────────────────────────────────────
+function ListeningBar({
+  isWebSTT,
+  isListening,
+  wordCount,
+  interimText,
+  amplitudeHistory,
+  threatColor,
+  listenAnim,
+}: {
+  isWebSTT: boolean;
+  isListening: boolean;
+  wordCount: number;
+  interimText: string;
+  amplitudeHistory: number[];
+  threatColor: string;
+  listenAnim: Animated.Value;
+}) {
+  return (
+    <View style={[styles.listenBar, {
+      backgroundColor: isWebSTT && isListening ? Colors.primaryGlow : Colors.bgCard,
+      borderColor: isWebSTT && isListening ? Colors.primary + '44' : Colors.border,
+    }]}>
+      {isWebSTT ? (
+        <>
+          <Animated.View style={[styles.listenDot, {
+            backgroundColor: isListening ? Colors.primary : Colors.textMuted,
+            opacity: listenAnim,
+          }]} />
+          <MaterialIcons name="hearing" size={14} color={isListening ? Colors.primary : Colors.textMuted} />
+          <Text style={[styles.listenLabel, { color: isListening ? Colors.primary : Colors.textMuted }]} numberOfLines={1}>
+            {interimText
+              ? interimText
+              : isListening
+              ? 'Listening for caller... speak naturally'
+              : 'Initializing auto-transcription...'}
+          </Text>
+          <Text style={styles.listenCount}>{wordCount}w</Text>
+        </>
+      ) : (
+        <>
+          <MaterialIcons name="graphic-eq" size={13} color={Colors.primary} />
+          <View style={styles.miniWaveWrap}>
+            {amplitudeHistory.slice(-16).map((amp, i) => (
+              <WaveBar key={i} amplitude={amp} color={threatColor} />
+            ))}
+          </View>
+          <Text style={[styles.listenLabel, { color: Colors.primary }]}>Acoustic monitoring active</Text>
+        </>
+      )}
+    </View>
+  );
+}
+
 export default function GhostModeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -76,11 +153,48 @@ export default function GhostModeScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const intelScrollRef = useRef<ScrollView>(null);
   const threatAnim = useRef(new Animated.Value(0)).current;
+  const listenDotAnim = useRef(new Animated.Value(1)).current;
+
+  // Amplitude history for waveform
+  const [amplitudeHistory, setAmplitudeHistory] = useState<number[]>(Array(16).fill(0.05));
+
+  // Tracks which caller segments have already been submitted to Ghost AI
+  const submittedSegmentIds = useRef<Set<string>>(new Set());
+  // Prevents overlapping AI responses
+  const isHandlingRef = useRef(false);
 
   const threatColor = SentinelEngine.getThreatColor(ghost.threatLevel);
 
+  // ── Auto-transcription pipeline ──────────────────────────────────────────
+  const handleCallerSegment = useCallback(async (text: string, speaker: 'A' | 'B') => {
+    // Only process "A" turns as caller (speaker B = AI's mic pickup of its own TTS, skip it)
+    // When on web, Speaker A is the predominant voice captured first in each turn
+    if (!text.trim() || isHandlingRef.current) return;
+    isHandlingRef.current = true;
+    await ghost.submitCallerText(text.trim());
+    isHandlingRef.current = false;
+  }, [ghost.submitCallerText]);
+
+  const transcription = useLiveTranscription(handleCallerSegment);
+
+  const isWebSTT = Platform.OS === 'web' && transcription.isSupported;
+
+  // ── Mount: initialize ghost + start transcription ────────────────────────
   useEffect(() => {
     ghost.initialize();
+    transcription.start();
+
+    // Pulse listening dot
+    const listenPulse = Animated.loop(Animated.sequence([
+      Animated.timing(listenDotAnim, { toValue: 0.25, duration: 700, useNativeDriver: true }),
+      Animated.timing(listenDotAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+    ]));
+    listenPulse.start();
+
+    return () => {
+      transcription.stop();
+      listenPulse.stop();
+    };
   }, []);
 
   useEffect(() => {
@@ -93,201 +207,176 @@ export default function GhostModeScreen() {
     }
   }, [ghost.messages.length]);
 
+  // Sync amplitude from acoustic monitoring into waveform
+  useEffect(() => {
+    setAmplitudeHistory(prev => [...prev.slice(-15), ghost.amplitude || 0.05]);
+  }, [ghost.amplitude]);
+
   const meterWidth = threatAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
 
-  const handleSend = async () => {
-    if (ghost.inputText.trim()) {
-      await ghost.submitCallerText(ghost.inputText.trim());
-    }
-  };
-
   const handleEnd = async () => {
-    const result = await ghost.endSession();
+    transcription.stop();
+    await ghost.endSession();
     router.back();
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: Colors.bg }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={handleEnd} style={styles.backBtn}>
-            <MaterialIcons name="keyboard-arrow-down" size={28} color={Colors.textSecondary} />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <View style={[styles.ghostBadge, ghost.isExposeMode && styles.ghostBadgeExpose]}>
-              <View style={[styles.ghostDot, { backgroundColor: ghost.isExposeMode ? Colors.warning : Colors.primary }]} />
-              <Text style={[styles.ghostBadgeText, { color: ghost.isExposeMode ? Colors.warning : Colors.primary }]}>
-                {ghost.isExposeMode ? 'EXPOSE MODE' : 'GHOST ACTIVE'}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.durationPill}>
-            <Text style={styles.durationText}>{formatDur(ghost.duration)}</Text>
-          </View>
-        </View>
-
-        {/* AI Avatar */}
-        <View style={styles.avatarSection}>
-          <PulseRing color={ghost.isAISpeaking ? Colors.primary : threatColor} isActive={ghost.isAISpeaking} />
-          <Text style={styles.personaName}>{personaName}</Text>
-          <Text style={[styles.personaStatus, { color: ghost.isAISpeaking ? Colors.primary : Colors.textSecondary }]}>
-            {ghost.isAISpeaking ? 'Speaking...' : ghost.isProcessing ? 'Processing...' : 'Listening'}
-          </Text>
-        </View>
-
-        {/* SENTINEL Score Row */}
-        <View style={[styles.scoreRow, { borderColor: threatColor + '55' }]}>
-          <View style={styles.scoreLeft}>
-            <View style={[styles.levelDot, { backgroundColor: threatColor }]} />
-            <Text style={[styles.levelLabel, { color: threatColor }]}>
-              {SentinelEngine.getThreatLabel(ghost.threatLevel)}
+    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={handleEnd} style={styles.backBtn}>
+          <MaterialIcons name="keyboard-arrow-down" size={28} color={Colors.textSecondary} />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <View style={[styles.ghostBadge, ghost.isExposeMode && styles.ghostBadgeExpose]}>
+            <View style={[styles.ghostDot, { backgroundColor: ghost.isExposeMode ? Colors.warning : Colors.primary }]} />
+            <Text style={[styles.ghostBadgeText, { color: ghost.isExposeMode ? Colors.warning : Colors.primary }]}>
+              {ghost.isExposeMode ? 'EXPOSE MODE' : 'GHOST ACTIVE'}
             </Text>
-            {ghost.trajectoryLabel === 'rising' && (
-              <View style={styles.risingBadge}>
-                <MaterialIcons name="trending-up" size={10} color={Colors.danger} />
-                <Text style={styles.risingText}>RISING</Text>
-              </View>
-            )}
           </View>
-          <Text style={[styles.scoreNum, { color: threatColor }]}>{ghost.threatScore}%</Text>
         </View>
-        <View style={styles.meterTrack}>
-          <Animated.View style={[styles.meterFill, { width: meterWidth, backgroundColor: threatColor }]} />
+        <View style={styles.durationPill}>
+          <View style={[styles.recDot, { backgroundColor: Colors.danger }]} />
+          <Text style={styles.durationText}>{formatDur(ghost.duration)}</Text>
         </View>
+      </View>
 
-        {/* Fact Check */}
-        {ghost.factChecks.length > 0 && (
-          <View style={styles.factCheck}>
-            <MaterialIcons name="fact-check" size={14} color={Colors.warning} />
-            <Text style={styles.factCheckText} numberOfLines={2}>{ghost.factChecks[0]}</Text>
+      {/* AI Avatar */}
+      <View style={styles.avatarSection}>
+        <PulseRing color={ghost.isAISpeaking ? Colors.primary : threatColor} isActive={ghost.isAISpeaking} />
+        <Text style={styles.personaName}>{personaName}</Text>
+        <Text style={[styles.personaStatus, { color: ghost.isAISpeaking ? Colors.primary : Colors.textSecondary }]}>
+          {ghost.isAISpeaking ? 'Responding to caller...' : ghost.isProcessing ? 'Processing...' : 'Listening to caller'}
+        </Text>
+      </View>
+
+      {/* SENTINEL Score */}
+      <View style={[styles.scoreRow, { borderColor: threatColor + '55' }]}>
+        <View style={styles.scoreLeft}>
+          <View style={[styles.levelDot, { backgroundColor: threatColor }]} />
+          <Text style={[styles.levelLabel, { color: threatColor }]}>
+            {SentinelEngine.getThreatLabel(ghost.threatLevel)}
+          </Text>
+          {ghost.trajectoryLabel === 'rising' && (
+            <View style={styles.risingBadge}>
+              <MaterialIcons name="trending-up" size={10} color={Colors.danger} />
+              <Text style={styles.risingText}>RISING</Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.scoreNum, { color: threatColor }]}>{ghost.threatScore}%</Text>
+      </View>
+      <View style={styles.meterTrack}>
+        <Animated.View style={[styles.meterFill, { width: meterWidth, backgroundColor: threatColor }]} />
+      </View>
+
+      {/* Fact Check */}
+      {ghost.factChecks.length > 0 && (
+        <View style={styles.factCheck}>
+          <MaterialIcons name="fact-check" size={14} color={Colors.warning} />
+          <Text style={styles.factCheckText} numberOfLines={2}>{ghost.factChecks[0]}</Text>
+        </View>
+      )}
+
+      {/* Intelligence Dashboard */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        ref={intelScrollRef}
+        style={styles.intelScroll}
+        contentContainerStyle={{ gap: Spacing.sm, paddingHorizontal: Spacing.md }}
+      >
+        <IntelCard label="Time Wasted" value={`${ghost.intelligence.timeWasted}s`} icon="timer" color={Colors.primary} />
+        <IntelCard label="Caller ID" value={ghost.intelligence.callerClaimedIdentity || 'Unknown'} icon="badge" color={Colors.textSecondary} />
+        <IntelCard label="Payment" value={ghost.intelligence.paymentMentioned ? 'REQUESTED' : 'None'} icon="payments" color={ghost.intelligence.paymentMentioned ? Colors.danger : Colors.safe} />
+        <IntelCard label="ID Consistency" value={`${ghost.intelligence.identityConsistency}%`} icon="verified-user" color={ghost.intelligence.identityConsistency < 70 ? Colors.danger : Colors.safe} />
+        {ghost.deepfakeConfidence > 20 && (
+          <IntelCard label="Deepfake" value={`${ghost.deepfakeConfidence}%`} icon="record-voice-over" color={Colors.warning} />
+        )}
+        <IntelCard label="Words heard" value={transcription.wordCount} icon="hearing" color={Colors.primary} />
+      </ScrollView>
+
+      {/* Auto-Listening Status Bar */}
+      <ListeningBar
+        isWebSTT={isWebSTT}
+        isListening={transcription.isListening}
+        wordCount={transcription.wordCount}
+        interimText={transcription.interimText}
+        amplitudeHistory={amplitudeHistory}
+        threatColor={threatColor}
+        listenAnim={listenDotAnim}
+      />
+
+      {/* Conversation Transcript */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.transcript}
+        contentContainerStyle={{ padding: Spacing.sm + 4, gap: Spacing.sm }}
+        showsVerticalScrollIndicator={false}
+      >
+        {ghost.messages.length === 0 && (
+          <View style={styles.emptyTranscript}>
+            <MaterialIcons name="hearing" size={28} color={Colors.primary} />
+            <Text style={styles.emptyText}>{personaName} is ready</Text>
+            <Text style={styles.emptySubText}>
+              Caller audio is auto-transcribed and analyzed.{'\n'}
+              {personaName} will respond automatically.
+            </Text>
+          </View>
+        )}
+        {ghost.messages.map(msg => {
+          const isAI = msg.role === 'ai';
+          return (
+            <View key={msg.id} style={[styles.bubble, isAI ? styles.bubbleAI : styles.bubbleCaller]}>
+              <Text style={[styles.bubbleRole, { color: isAI ? Colors.primary : Colors.warning }]}>
+                {isAI ? `${personaName} (AI AGENT)` : 'CALLER'}
+              </Text>
+              <Text style={[styles.bubbleText, isAI && { color: Colors.text }]}>{msg.text}</Text>
+              {isAI && msg.state && (
+                <Text style={styles.stateTag}>{msg.state.replace(/_/g, ' ').toUpperCase()}</Text>
+              )}
+            </View>
+          );
+        })}
+
+        {/* Show latest interim caller transcript inline */}
+        {transcription.interimText && !ghost.isProcessing && (
+          <View style={[styles.bubble, styles.bubbleCaller, { opacity: 0.65 }]}>
+            <Text style={[styles.bubbleRole, { color: Colors.warning }]}>CALLER (LIVE)</Text>
+            <Text style={[styles.bubbleText, { fontStyle: 'italic' }]}>{transcription.interimText}</Text>
           </View>
         )}
 
-        {/* Intelligence Dashboard */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} ref={intelScrollRef}
-          style={styles.intelScroll}
-          contentContainerStyle={{ gap: Spacing.sm, paddingHorizontal: Spacing.md }}
+        {ghost.isProcessing && (
+          <View style={[styles.bubble, styles.bubbleAI]}>
+            <Text style={styles.typingDots}>● ● ●</Text>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Action Buttons */}
+      <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
+        <TouchableOpacity style={styles.joinBtn} onPress={handleEnd} activeOpacity={0.85}>
+          <MaterialIcons name="phone" size={16} color={Colors.textInverse} />
+          <Text style={styles.joinText}>Join Call</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.exposeBtn, ghost.isExposeMode && styles.exposeBtnActive]}
+          onPress={ghost.enableExposeMode}
+          disabled={ghost.isExposeMode}
+          activeOpacity={0.85}
         >
-          <IntelCard
-            label="Time Wasted"
-            value={`${ghost.intelligence.timeWasted}s`}
-            icon="timer"
-            color={Colors.primary}
-          />
-          <IntelCard
-            label="Caller ID"
-            value={ghost.intelligence.callerClaimedIdentity || 'Unknown'}
-            icon="badge"
-            color={Colors.textSecondary}
-          />
-          <IntelCard
-            label="Payment"
-            value={ghost.intelligence.paymentMentioned ? 'REQUESTED' : 'None'}
-            icon="payments"
-            color={ghost.intelligence.paymentMentioned ? Colors.danger : Colors.safe}
-          />
-          <IntelCard
-            label="ID Consistency"
-            value={`${ghost.intelligence.identityConsistency}%`}
-            icon="verified-user"
-            color={ghost.intelligence.identityConsistency < 70 ? Colors.danger : Colors.safe}
-          />
-          {ghost.deepfakeConfidence > 20 && (
-            <IntelCard
-              label="Deepfake"
-              value={`${ghost.deepfakeConfidence}%`}
-              icon="record-voice-over"
-              color={Colors.warning}
-            />
-          )}
-        </ScrollView>
-
-        {/* Conversation Transcript */}
-        <ScrollView
-          ref={scrollRef}
-          style={styles.transcript}
-          contentContainerStyle={{ padding: Spacing.sm + 4, gap: Spacing.sm }}
-          showsVerticalScrollIndicator={false}
-        >
-          {ghost.messages.length === 0 && (
-            <View style={styles.emptyTranscript}>
-              <MaterialIcons name="hearing" size={28} color={Colors.textMuted} />
-              <Text style={styles.emptyText}>{personaName} is ready to answer.</Text>
-              <Text style={styles.emptySubText}>Type what the caller says below.</Text>
-            </View>
-          )}
-          {ghost.messages.map((msg, i) => {
-            const isAI = msg.role === 'ai';
-            return (
-              <View key={msg.id} style={[styles.bubble, isAI ? styles.bubbleAI : styles.bubbleCaller]}>
-                <Text style={[styles.bubbleRole, { color: isAI ? Colors.primary : Colors.warning }]}>
-                  {isAI ? `${personaName} (CALLSHIELD AI)` : 'CALLER'}
-                </Text>
-                <Text style={[styles.bubbleText, isAI && { color: Colors.text }]}>{msg.text}</Text>
-                {isAI && msg.state && (
-                  <Text style={styles.stateTag}>{msg.state.replace(/_/g, ' ').toUpperCase()}</Text>
-                )}
-              </View>
-            );
-          })}
-          {ghost.isProcessing && (
-            <View style={[styles.bubble, styles.bubbleAI]}>
-              <Text style={styles.typingDots}>● ● ●</Text>
-            </View>
-          )}
-        </ScrollView>
-
-        {/* Input Row */}
-        <View style={[styles.inputRow, { paddingBottom: insets.bottom + 4 }]}>
-          <TextInput
-            style={styles.input}
-            value={ghost.inputText}
-            onChangeText={ghost.setInputText}
-            placeholder={`Type what caller says → ${personaName} responds via voice`}
-            placeholderTextColor={Colors.textMuted}
-            multiline
-            returnKeyType="send"
-            onSubmitEditing={handleSend}
-            editable={!ghost.isProcessing}
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, (!ghost.inputText.trim() || ghost.isProcessing) && styles.sendBtnDisabled]}
-            onPress={handleSend}
-            disabled={!ghost.inputText.trim() || ghost.isProcessing}
-            activeOpacity={0.85}
-          >
-            <MaterialIcons name="send" size={18} color={ghost.inputText.trim() ? Colors.bg : Colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={[styles.actions, { paddingBottom: insets.bottom + 8 }]}>
-          <TouchableOpacity style={styles.joinBtn} onPress={handleEnd} activeOpacity={0.85}>
-            <MaterialIcons name="phone" size={16} color={Colors.textInverse} />
-            <Text style={styles.joinText}>Join Call</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.exposeBtn, ghost.isExposeMode && styles.exposeBtnActive]}
-            onPress={ghost.enableExposeMode}
-            disabled={ghost.isExposeMode}
-            activeOpacity={0.85}
-          >
-            <MaterialIcons name="bug-report" size={16} color={ghost.isExposeMode ? Colors.textInverse : Colors.warning} />
-            <Text style={[styles.exposeText, ghost.isExposeMode && { color: Colors.textInverse }]}>
-              {ghost.isExposeMode ? 'Exposing...' : 'Expose Mode'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.endBtn} onPress={handleEnd} activeOpacity={0.85}>
-            <MaterialIcons name="call-end" size={16} color="#fff" />
-            <Text style={styles.endText}>End</Text>
-          </TouchableOpacity>
-        </View>
+          <MaterialIcons name="bug-report" size={16} color={ghost.isExposeMode ? Colors.textInverse : Colors.warning} />
+          <Text style={[styles.exposeText, ghost.isExposeMode && { color: Colors.textInverse }]}>
+            {ghost.isExposeMode ? 'Exposing...' : 'Expose Mode'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.endBtn} onPress={handleEnd} activeOpacity={0.85}>
+          <MaterialIcons name="call-end" size={16} color="#fff" />
+          <Text style={styles.endText}>End</Text>
+        </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -308,15 +397,15 @@ const styles = StyleSheet.create({
   ghostDot: { width: 8, height: 8, borderRadius: 4 },
   ghostBadgeText: { fontSize: 11, fontWeight: FontWeight.extrabold, letterSpacing: 1 },
   durationPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: Colors.bgCard, paddingHorizontal: 10, paddingVertical: 5,
     borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border,
   },
+  recDot: { width: 6, height: 6, borderRadius: 3 },
   durationText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.text },
 
   avatarSection: { alignItems: 'center', marginBottom: Spacing.sm, gap: Spacing.xs },
-  pulseRing: {
-    position: 'absolute', width: 100, height: 100, borderRadius: 50, borderWidth: 2,
-  },
+  pulseRing: { position: 'absolute', width: 100, height: 100, borderRadius: 50, borderWidth: 2 },
   avatarRing: {
     width: 100, height: 100, borderRadius: 50, borderWidth: 2.5,
     alignItems: 'center', justifyContent: 'center', ...Shadow.primary,
@@ -341,7 +430,10 @@ const styles = StyleSheet.create({
   },
   risingText: { fontSize: 9, fontWeight: FontWeight.extrabold, color: Colors.danger, letterSpacing: 0.5 },
   scoreNum: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold },
-  meterTrack: { height: 4, backgroundColor: Colors.bgSurface, marginHorizontal: Spacing.md, borderRadius: 2, overflow: 'hidden', marginBottom: Spacing.sm },
+  meterTrack: {
+    height: 4, backgroundColor: Colors.bgSurface, marginHorizontal: Spacing.md,
+    borderRadius: 2, overflow: 'hidden', marginBottom: Spacing.sm,
+  },
   meterFill: { height: '100%', borderRadius: 2 },
 
   factCheck: {
@@ -360,16 +452,26 @@ const styles = StyleSheet.create({
   intelLabel: { fontSize: 9, color: Colors.textMuted, fontWeight: FontWeight.bold, letterSpacing: 0.5, textAlign: 'center' },
   intelValue: { fontSize: FontSize.sm, fontWeight: FontWeight.extrabold, textAlign: 'center' },
 
+  // Listening bar
+  listenBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: Spacing.md, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md, paddingVertical: 8,
+    borderWidth: 1, marginBottom: Spacing.sm,
+  },
+  listenDot: { width: 7, height: 7, borderRadius: 3.5 },
+  listenLabel: { flex: 1, fontSize: 11, fontWeight: FontWeight.semibold, lineHeight: 14 },
+  listenCount: { fontSize: 9, color: Colors.textMuted },
+  miniWaveWrap: { flexDirection: 'row', alignItems: 'flex-end', height: 28, gap: 0 },
+
   transcript: {
     flex: 1, marginHorizontal: Spacing.md, backgroundColor: Colors.bgCard,
     borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.sm,
   },
-  emptyTranscript: { alignItems: 'center', paddingTop: Spacing.xl, gap: Spacing.sm },
-  emptyText: { fontSize: FontSize.md, fontWeight: FontWeight.medium, color: Colors.textSecondary },
-  emptySubText: { fontSize: FontSize.xs, color: Colors.textMuted },
-  bubble: {
-    borderRadius: Radius.md, padding: Spacing.sm + 2, maxWidth: '88%', gap: 3,
-  },
+  emptyTranscript: { alignItems: 'center', paddingTop: Spacing.xl, gap: Spacing.sm, paddingHorizontal: Spacing.md },
+  emptyText: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
+  emptySubText: { fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center', lineHeight: 18 },
+  bubble: { borderRadius: Radius.md, padding: Spacing.sm + 2, maxWidth: '88%', gap: 3 },
   bubbleAI: {
     alignSelf: 'flex-end', backgroundColor: Colors.primaryGlow,
     borderWidth: 1, borderColor: Colors.borderStrong, borderBottomRightRadius: 4,
@@ -383,41 +485,26 @@ const styles = StyleSheet.create({
   stateTag: { fontSize: 8, color: Colors.textMuted, letterSpacing: 0.5 },
   typingDots: { fontSize: FontSize.md, color: Colors.primary, letterSpacing: 5 },
 
-  inputRow: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm,
+  actions: {
+    flexDirection: 'row', gap: Spacing.sm,
     paddingHorizontal: Spacing.md, paddingTop: Spacing.sm,
     borderTopWidth: 1, borderTopColor: Colors.border,
   },
-  input: {
-    flex: 1, backgroundColor: Colors.bgCard, borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm + 4,
-    fontSize: FontSize.sm, color: Colors.text, borderWidth: 1.5, borderColor: Colors.borderStrong,
-    maxHeight: 80, includeFontPadding: false,
-  },
-  sendBtn: {
-    width: 44, height: 44, borderRadius: Radius.md,
-    backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', ...Shadow.primary,
-  },
-  sendBtnDisabled: { backgroundColor: Colors.bgSurface, shadowOpacity: 0 },
-
-  actions: {
-    flexDirection: 'row', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingTop: Spacing.sm,
-  },
   joinBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, backgroundColor: Colors.safe, borderRadius: Radius.full, paddingVertical: 12,
+    gap: 6, backgroundColor: Colors.safe, borderRadius: Radius.full, paddingVertical: 14,
   },
   joinText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textInverse },
   exposeBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, backgroundColor: Colors.warningGlow, borderRadius: Radius.full, paddingVertical: 12,
+    gap: 6, backgroundColor: Colors.warningGlow, borderRadius: Radius.full, paddingVertical: 14,
     borderWidth: 1.5, borderColor: Colors.warning + '55',
   },
   exposeBtnActive: { backgroundColor: Colors.warning },
   exposeText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.warning },
   endBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, backgroundColor: Colors.danger, borderRadius: Radius.full, paddingVertical: 12,
+    gap: 6, backgroundColor: Colors.danger, borderRadius: Radius.full, paddingVertical: 14,
     ...Shadow.danger,
   },
   endText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#fff' },
