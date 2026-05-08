@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert,
-  Platform, Modal, TextInput, ActivityIndicator,
+  Platform, Modal, TextInput, ActivityIndicator, Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../constants/theme';
 import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { checkAllPermissions, PermissionsState } from '../../services/permissionsService';
 
 const PERSONAS = ['Alex', 'Jordan', 'Morgan', 'Casey', 'Riley'];
 
@@ -231,12 +232,23 @@ export default function SettingsScreen() {
   const [upgradeModal, setUpgradeModal] = useState<{ visible: boolean; plan: string }>({ visible: false, plan: 'Plus' });
   const [editProfileModal, setEditProfileModal] = useState(false);
 
+  // Permissions state
+  const [permissions, setPermissions] = useState<PermissionsState>({
+    microphone: 'undetermined',
+    contacts: 'undetermined',
+    notifications: 'undetermined',
+  });
+
   // Load persisted settings on mount
   useEffect(() => {
     loadSettings().then(s => {
       setSettings(s);
       setSettingsLoaded(true);
     });
+    // Check permission statuses
+    if (Platform.OS !== 'web') {
+      checkAllPermissions().then(setPermissions);
+    }
   }, []);
 
   // Update a single setting and persist immediately
@@ -460,8 +472,97 @@ export default function SettingsScreen() {
           </SettingRow>
         </View>
 
-        {/* Subscription */}
-        <Text style={styles.sectionTitle}>Subscription</Text>
+        {/* Permissions & Privacy */}
+        <Text style={styles.sectionTitle}>Permissions & Privacy</Text>
+        <View style={styles.section}>
+          {[
+            { key: 'microphone', icon: 'mic', label: 'Microphone', sub: 'Required for live call analysis' },
+            { key: 'contacts', icon: 'contacts', label: 'Contacts', sub: 'Caller identification from phonebook' },
+            { key: 'notifications', icon: 'notifications', label: 'Notifications', sub: 'Scam alerts and call summaries' },
+          ].map((item, i) => {
+            const status = permissions[item.key as keyof PermissionsState];
+            const color = status === 'granted' ? Colors.safe : status === 'denied' ? Colors.danger : Colors.textMuted;
+            const statusLabel = status === 'granted' ? 'Granted' : status === 'denied' ? 'Denied' : status === 'limited' ? 'Limited' : 'Not set';
+            return (
+              <React.Fragment key={item.key}>
+                {i > 0 && <View style={styles.divider} />}
+                <View style={styles.settingRow}>
+                  <View style={[styles.settingIcon, { backgroundColor: color + '22' }]}>
+                    <MaterialIcons name={item.icon as any} size={20} color={color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingLabel}>{item.label}</Text>
+                    <Text style={styles.settingSub}>{item.sub}</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => Linking.openSettings()}
+                    style={[styles.permBadge, { backgroundColor: color + '1A', borderColor: color + '55' }]}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.permBadgeText, { color }]}>{statusLabel}</Text>
+                  </TouchableOpacity>
+                </View>
+              </React.Fragment>
+            );
+          })}
+          <View style={styles.divider} />
+          <TouchableOpacity
+            onPress={() => Linking.openSettings()}
+            style={[styles.settingRow, { gap: Spacing.sm }]}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.settingIcon, { backgroundColor: Colors.primary + '22' }]}>
+              <MaterialIcons name="settings" size={20} color={Colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingLabel}>Open iOS Settings</Text>
+              <Text style={styles.settingSub}>Manage all CallShield permissions</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={18} color={Colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        {/* CallKit Setup Guide */}
+        {Platform.OS === 'ios' && (
+          <>
+            <Text style={styles.sectionTitle}>Default Call App Setup</Text>
+            <View style={[styles.section, { padding: Spacing.md, gap: Spacing.sm }]}>
+              <View style={{ flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start' }}>
+                <MaterialIcons name="phone-in-talk" size={20} color={Colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingLabel, { marginBottom: 4 }]}>Use CallShield as Call Screener</Text>
+                  <Text style={styles.settingSub}>
+                    After installing a development build, enable CallShield in:
+                  </Text>
+                  <View style={styles.callkitSteps}>
+                    {[
+                      'Open iOS Settings',
+                      'Tap "Phone"',
+                      'Tap "Call Blocking & Identification"',
+                      'Enable "CallShield"',
+                    ].map((step, i) => (
+                      <View key={step} style={styles.callkitStep}>
+                        <View style={styles.callkitStepNum}>
+                          <Text style={styles.callkitStepNumText}>{i + 1}</Text>
+                        </View>
+                        <Text style={styles.callkitStepText}>{step}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => Linking.openSettings()}
+                style={styles.openSettingsBtn}
+                activeOpacity={0.85}
+              >
+                <MaterialIcons name="settings" size={16} color={Colors.primary} />
+                <Text style={styles.openSettingsBtnText}>Open Settings</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
         <View style={styles.planCard}>
           {[
             { name: 'Free', price: '$0', features: ['Real-time detection', '5 Ghost Mode calls/mo', '30-day history'] },
@@ -576,6 +677,19 @@ const styles = StyleSheet.create({
   currentPlanText: { fontSize: 9, fontWeight: FontWeight.extrabold, color: Colors.safe, letterSpacing: 0.5 },
 
   version: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', marginTop: Spacing.xl },
+
+  // Permissions badges
+  permBadge: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1 },
+  permBadgeText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold },
+
+  // CallKit setup
+  callkitSteps: { gap: 8, marginTop: Spacing.sm },
+  callkitStep: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  callkitStepNum: { width: 20, height: 20, borderRadius: 10, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
+  callkitStepNumText: { fontSize: 11, fontWeight: FontWeight.extrabold, color: Colors.textInverse },
+  callkitStepText: { fontSize: FontSize.sm, color: Colors.textSecondary, flex: 1 },
+  openSettingsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Colors.primaryGlow, borderRadius: Radius.full, paddingVertical: 10, borderWidth: 1.5, borderColor: Colors.borderStrong, marginTop: 4 },
+  openSettingsBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.primary },
 
   // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 },

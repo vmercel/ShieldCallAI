@@ -25,6 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../constants/theme';
 import { supabase } from '../services/supabaseClient';
+import { PermissionsScreen } from '../components/PermissionsScreen';
 
 const { width, height } = Dimensions.get('window');
 const PERSONAS = ['Alex', 'Jordan', 'Morgan', 'Casey', 'Riley'];
@@ -528,7 +529,7 @@ function PersonaScreen({ onActivate }: { onActivate: (name: string) => void }) {
 }
 
 // ─── Main Onboarding ──────────────────────────────────────────────────────────
-type Screen = 'slides' | 'signup' | 'otp' | 'signin' | 'forgotPassword' | 'persona';
+type Screen = 'slides' | 'signup' | 'otp' | 'signin' | 'forgotPassword' | 'persona' | 'permissions';
 
 export default function OnboardingScreen() {
   const [screen, setScreen] = useState<Screen>('slides');
@@ -562,9 +563,14 @@ export default function OnboardingScreen() {
     await Promise.all([
       setPersonaName(personaName),
       setGhostMode(true),
-      setOnboarded(),
       updateProfile({ persona_name: personaName, ghost_mode_enabled: true }),
     ]);
+    // Go to permissions screen before launching main app
+    setScreen('permissions');
+  };
+
+  const handlePermissionsComplete = async () => {
+    await setOnboarded();
     router.replace('/(tabs)');
   };
 
@@ -620,6 +626,17 @@ export default function OnboardingScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
         <PersonaScreen onActivate={handleActivate} />
+      </View>
+    );
+  }
+
+  if (screen === 'permissions') {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
+        <PermissionsScreen
+          onComplete={handlePermissionsComplete}
+          onSkip={handlePermissionsComplete}
+        />
       </View>
     );
   }

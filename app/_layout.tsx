@@ -1,11 +1,29 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, Text, StyleSheet, Platform } from 'react-native';
 import { AppProvider } from '../contexts/AppContext';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors } from '../constants/theme';
+import { useEffect } from 'react';
+import { setupCallKit } from '../services/callKitService';
+import { registerPushToken } from '../services/permissionsService';
+import { getAllContacts } from '../services/contactsService';
+
+// Initialize global services on app start
+function AppInitializer() {
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    // Initialize CallKit for native call integration
+    setupCallKit();
+    // Pre-warm contacts cache in background
+    getAllContacts().catch(() => {});
+    // Register push token if notification permission is already granted
+    registerPushToken().catch(() => {});
+  }, []);
+  return null;
+}
 
 function AuthLoadingGate({ children }: { children: React.ReactNode }) {
   const { isLoading } = useAuth();
@@ -30,6 +48,7 @@ export default function RootLayout() {
       <AuthProvider>
         <AppProvider>
           <StatusBar style="light" />
+          <AppInitializer />
           <ErrorBoundary>
             <AuthLoadingGate>
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#060E1E' } }}>

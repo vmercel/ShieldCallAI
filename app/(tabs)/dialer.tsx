@@ -20,7 +20,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../../constants/theme';
-import { CONTACTS, Contact, searchContacts, getFavorites, getInitials, findContactByNumber } from '../../constants/contacts';
+import { Contact, getInitials, findContactByNumberSync } from '../../services/contactsService';
+import { CONTACTS, searchContacts, getFavorites } from '../../constants/contacts';
+
+// Alias sync lookup
+const findContactByNumber = findContactByNumberSync;
 import { useVoiceCommand } from '../../hooks/useVoiceCommand';
 import { parseVoiceCommand } from '../../services/voiceCommandService';
 import { aiDialerService, DialerResult } from '../../services/aiDialerService';
