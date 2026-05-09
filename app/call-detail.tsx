@@ -99,6 +99,7 @@ interface AdaptedCall {
   tags: string[];
   aiNotes?: string;
   rawTranscript: { speaker: string; text: string }[];
+  actionItems: string[];
 }
 
 function adaptRecord(r: CallRecord): AdaptedCall {
@@ -117,6 +118,7 @@ function adaptRecord(r: CallRecord): AdaptedCall {
     tags: r.tags || [],
     aiNotes: r.ai_notes,
     rawTranscript: r.transcript || [],
+    actionItems: r.action_items || [],
   };
 }
 
@@ -257,25 +259,20 @@ export default function CallDetailScreen() {
   const [replaying, setReplaying] = useState(false);
   const replayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Build real timeline from transcript threat scores if available
+  // Build timeline scores — prefer real per-window data, fall back to interpolation
   const buildTimelineScores = (record: CallRecord | null): number[] => {
     if (!record) return [];
-    // Use per-segment scores from actual transcript data when available
-    const transcript = record.transcript || [];
-    if (transcript.length >= 3) {
-      const baseScore = record.threat_score;
-      return transcript.map((_, i) => {
-        const progress = i / (transcript.length - 1);
-        // Simulate realistic rising threat trajectory from real data
-        const noise = (Math.random() - 0.5) * 12;
-        return Math.max(0, Math.min(100, Math.round(baseScore * (0.3 + progress * 0.7) + noise)));
-      });
+    // Real per-window scores recorded during the call (stored in threat_timeline)
+    if (record.threat_timeline && record.threat_timeline.length >= 2) {
+      return record.threat_timeline.map(w => w.score);
     }
-    // Fallback: generate from final score with rising pattern
+    // Interpolate from final threat_score and transcript length (no random noise)
+    const transcript = record.transcript || [];
     const score = record.threat_score;
-    return Array.from({ length: 16 }, (_, i) => {
-      const progress = i / 15;
-      return Math.max(0, Math.min(100, Math.round(score * (0.2 + progress * 0.8) + (Math.random() - 0.5) * 8)));
+    const len = Math.max(transcript.length, 8);
+    return Array.from({ length: len }, (_, i) => {
+      const progress = i / (len - 1);
+      return Math.max(0, Math.min(100, Math.round(score * (0.2 + progress * 0.8))));
     });
   };
 
@@ -606,6 +603,23 @@ export default function CallDetailScreen() {
           </>
         ) : null}
 
+        {/* Recommended Actions from AI Summary */}
+        {call.actionItems.length > 0 ? (
+          <>
+            <Text style={styles.sectionTitle}>Recommended Actions</Text>
+            <View style={styles.actionItemsCard}>
+              {call.actionItems.map((item, i) => (
+                <View key={i} style={styles.actionItemRow}>
+                  <View style={styles.actionItemNum}>
+                    <Text style={styles.actionItemNumText}>{i + 1}</Text>
+                  </View>
+                  <Text style={styles.actionItemText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : null}
+
         {/* Transcript Replay */}
         {transcript.length > 0 ? (
           <>
@@ -719,6 +733,11 @@ const styles = StyleSheet.create({
   summaryText: { flex: 1, fontSize: FontSize.sm, color: Colors.text, lineHeight: 22 },
   aiNotesCard: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start', backgroundColor: Colors.primaryGlow, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border },
   aiNotesText: { flex: 1, fontSize: FontSize.sm, color: Colors.text, lineHeight: 20 },
+  actionItemsCard: { backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border, gap: Spacing.sm },
+  actionItemRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
+  actionItemNum: { width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.primaryGlow, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.borderStrong, flexShrink: 0, marginTop: 1 },
+  actionItemNumText: { fontSize: 11, fontWeight: FontWeight.extrabold, color: Colors.primary },
+  actionItemText: { flex: 1, fontSize: FontSize.sm, color: Colors.text, lineHeight: 20 },
   transcriptHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.md, marginBottom: Spacing.sm },
   replayBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.primaryGlow, borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: Colors.borderStrong },
   replayBtnText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.primary },

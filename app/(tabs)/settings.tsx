@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert,
   Platform, Modal, TextInput, ActivityIndicator, Linking,
@@ -6,46 +6,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../constants/theme';
 import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { checkAllPermissions, PermissionsState } from '../../services/permissionsService';
 
 const PERSONAS = ['Alex', 'Jordan', 'Morgan', 'Casey', 'Riley'];
-
-// ─── Persistent settings keys ─────────────────────────────────────────────────
-const SETTINGS_KEY = 'callshield_settings_v1';
-
-interface PersistedSettings {
-  deepfakeDetect: boolean;
-  communityFeed: boolean;
-  quietHours: boolean;
-  federatedLearning: boolean;
-  autoScreenUnknown: boolean;
-}
-
-const DEFAULT_SETTINGS: PersistedSettings = {
-  deepfakeDetect: true,
-  communityFeed: true,
-  quietHours: false,
-  federatedLearning: false,
-  autoScreenUnknown: true,
-};
-
-async function loadSettings(): Promise<PersistedSettings> {
-  try {
-    const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
-  } catch {}
-  return DEFAULT_SETTINGS;
-}
-
-async function saveSettings(settings: PersistedSettings): Promise<void> {
-  try {
-    await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch {}
-}
 
 // ─── Helper components ────────────────────────────────────────────────────────
 function SettingRow({ icon, label, sub, iconColor, children }: {
@@ -220,10 +187,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { ghostModeEnabled, personaName, setGhostMode, setPersonaName } = useApp();
   const { profile, signOut, updateProfile } = useAuth();
-
-  // Persisted settings
-  const [settings, setSettings] = useState<PersistedSettings>(DEFAULT_SETTINGS);
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const { settings, isLoaded: settingsLoaded, updateSetting } = useSettings();
 
   // UI state
   const [showPersona, setShowPersona] = useState(false);
@@ -239,25 +203,11 @@ export default function SettingsScreen() {
     notifications: 'undetermined',
   });
 
-  // Load persisted settings on mount
+  // Load permission statuses on mount
   useEffect(() => {
-    loadSettings().then(s => {
-      setSettings(s);
-      setSettingsLoaded(true);
-    });
-    // Check permission statuses
     if (Platform.OS !== 'web') {
       checkAllPermissions().then(setPermissions);
     }
-  }, []);
-
-  // Update a single setting and persist immediately
-  const updateSetting = useCallback(<K extends keyof PersistedSettings>(key: K, value: PersistedSettings[K]) => {
-    setSettings(prev => {
-      const next = { ...prev, [key]: value };
-      saveSettings(next);
-      return next;
-    });
   }, []);
 
   const showConfirm = (title: string, message: string, onConfirm: () => void) => {
@@ -445,7 +395,7 @@ export default function SettingsScreen() {
         {/* Privacy */}
         <Text style={styles.sectionTitle}>Privacy</Text>
         <View style={styles.section}>
-          <SettingRow icon="lock" label="Local Audio Processing" sub="Acoustic analysis runs on-device; transcripts sent to AI agents are anonymized">
+          <SettingRow icon="lock" label="On-Device NLP Analysis" sub="SENTINEL™ linguistic analysis runs locally. Acoustic signals computed on-device. AI responses use cloud (Supabase Edge Functions).">
             <View style={styles.activeBadge}>
               <Text style={styles.activeBadgeText}>ON</Text>
             </View>

@@ -21,6 +21,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../constants/theme';
 import { useApp } from '../contexts/AppContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { useGhostMode } from '../hooks/useGhostMode';
 import { useLiveTranscription } from '../hooks/useLiveTranscription';
 import { SentinelEngine } from '../services/sentinelEngine';
@@ -149,7 +150,8 @@ export default function GhostModeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { personaName } = useApp();
-  const ghost = useGhostMode(personaName);
+  const { settings } = useSettings();
+  const ghost = useGhostMode(personaName, 'the account holder', settings.deepfakeDetect);
   const scrollRef = useRef<ScrollView>(null);
   const intelScrollRef = useRef<ScrollView>(null);
   const threatAnim = useRef(new Animated.Value(0)).current;

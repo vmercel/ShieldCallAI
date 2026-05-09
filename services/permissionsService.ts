@@ -10,6 +10,7 @@ import { Platform } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from './supabaseClient';
 
 const PERMISSIONS_REQUESTED_KEY = 'callshield_permissions_v1';
 
@@ -188,10 +189,25 @@ export async function registerPushToken(): Promise<string | null> {
       });
     }
 
-    const token = await Notifications.getExpoPushTokenAsync({
-      projectId: 'callshield',
-    });
-    return token.data;
+    // getExpoPushTokenAsync with no projectId uses the slug from app.json automatically.
+    // For EAS builds, set projectId to your EAS project UUID from eas.json or app.json extra.
+    const token = await Notifications.getExpoPushTokenAsync();
+    const pushToken = token.data;
+
+    // Persist push token to user profile so server can send targeted notifications
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from('user_profiles')
+          .update({ push_token: pushToken })
+          .eq('id', user.id);
+      }
+    } catch (e) {
+      console.warn('Push token storage error:', e);
+    }
+
+    return pushToken;
   } catch (e) {
     console.warn('Push token registration error:', e);
     return null;

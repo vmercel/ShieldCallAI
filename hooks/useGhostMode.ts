@@ -78,7 +78,7 @@ async function speakText(text: string, rate = 0.9): Promise<void> {
   });
 }
 
-export function useGhostMode(personaName: string, userName = 'the account holder') {
+export function useGhostMode(personaName: string, userName = 'the account holder', deepfakeDetect = true) {
   const [state, setState] = useState<GhostModeState>(INITIAL_STATE);
   const sentinelRef = useRef(new SentinelEngine());
   const acousticRef = useRef(new AcousticSentinel());
@@ -113,21 +113,26 @@ export function useGhostMode(personaName: string, userName = 'the account holder
       }));
     }, 1000);
 
-    // Start acoustic monitoring
-    const micGranted = await acousticRef.current.requestPermission();
-    setState(prev => ({ ...prev, hasMicPermission: micGranted }));
+    // Start acoustic monitoring (respects deepfakeDetect setting)
+    if (!deepfakeDetect) {
+      // Skip acoustic monitoring when deepfake detection is disabled
+      setState(prev => ({ ...prev, hasMicPermission: false }));
+    } else {
+      const micGranted = await acousticRef.current.requestPermission();
+      setState(prev => ({ ...prev, hasMicPermission: micGranted }));
 
-    if (micGranted) {
-      await acousticRef.current.startMonitoring(snapshot => {
-        const deepfake = acousticRef.current.getSession().deepfakeConfidence;
-        deepfakeRef.current = deepfake;
-        setState(prev => ({
-          ...prev,
-          acousticStress: snapshot.acousticStressScore,
-          amplitude: snapshot.normalizedAmplitude,
-          deepfakeConfidence: deepfake,
-        }));
-      });
+      if (micGranted) {
+        await acousticRef.current.startMonitoring(snapshot => {
+          const deepfake = acousticRef.current.getSession().deepfakeConfidence;
+          deepfakeRef.current = deepfake;
+          setState(prev => ({
+            ...prev,
+            acousticStress: snapshot.acousticStressScore,
+            amplitude: snapshot.normalizedAmplitude,
+            deepfakeConfidence: deepfake,
+          }));
+        });
+      }
     }
 
     // AI opening greeting

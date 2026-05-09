@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, ActivityIndicator, Text, StyleSheet, Platform } from 'react-native';
 import { AppProvider } from '../contexts/AppContext';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { SettingsProvider } from '../contexts/SettingsContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors } from '../constants/theme';
 import { useEffect } from 'react';
@@ -46,6 +47,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
+        <SettingsProvider>
         <AppProvider>
           <StatusBar style="light" />
           <AppInitializer />
@@ -63,6 +65,7 @@ export default function RootLayout() {
             </AuthLoadingGate>
           </ErrorBoundary>
         </AppProvider>
+        </SettingsProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );
