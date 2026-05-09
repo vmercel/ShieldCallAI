@@ -1,44 +1,81 @@
 /**
- * CALLSHIELD AI Dialer Edge Function
- * Simulates the AI dialer conducting a call on the user's behalf.
+ * CALLSHIELD AI Dialer Edge Function — Phase-Streaming Mode
  *
- * Given a user instruction (e.g. "Refill my blood pressure medication at CVS"),
- * the AI simulates the full call flow: IVR navigation, agent interaction,
- * verification steps, and task completion — returning a realistic transcript
- * and outcome summary.
+ * Streams call execution in phases so the client can display
+ * real-time animated progress: DIALING → IVR → HOLD → AGENT → COMPLETE
+ *
+ * Phase events are newline-delimited JSON (NDJSON):
+ *   { "phase": "dialing", "message": "Dialing CVS Pharmacy..." }
+ *   { "phase": "ivr", "message": "Navigating IVR menu...", "transcript": [...] }
+ *   { "phase": "hold", "message": "On hold for agent...", "holdTime": 45 }
+ *   { "phase": "agent", "message": "Speaking with agent...", "transcript": [...] }
+ *   { "phase": "complete", "result": { ...full result... } }
+ *   { "phase": "error", "error": "..." }
  */
 
 import { corsHeaders } from '../_shared/cors.ts';
 
-const SYSTEM_PROMPT = `You are CALLSHIELD's AI Dialer agent. You simulate conducting a phone call on behalf of a user to complete a specific task.
+const SYSTEM_PROMPT = `You are CALLSHIELD's AI Dialer agent. You simulate conducting a real phone call on behalf of a user to complete a specific task.
 
-Given a task instruction, you will:
-1. Simulate the full call flow realistically (IVR menus, hold times, agent interactions)
-2. Show the conversation as a realistic transcript
-3. Navigate common obstacles (transfers, verification questions, hold)
-4. Complete the task or explain what prevented completion
-5. Extract action items and next steps
+Given a task instruction, simulate the full call flow with EXACTLY this JSON structure:
 
-Return a JSON response with this exact structure:
 {
-  "outcome": "success" | "partial" | "failed",
-  "summary": "One sentence plain-language summary of what happened",
-  "transcript": [
-    { "speaker": "system", "text": "Automated message or IVR prompt" },
-    { "speaker": "ai", "text": "What the AI said" },
-    { "speaker": "agent", "text": "What the human agent said" }
+  "phases": [
+    {
+      "phase": "dialing",
+      "message": "Brief 1-sentence description of who is being called",
+      "durationMs": 2500
+    },
+    {
+      "phase": "ivr",
+      "message": "Brief description of IVR navigation",
+      "durationMs": 8000,
+      "transcript": [
+        { "speaker": "system", "text": "IVR prompt text" },
+        { "speaker": "ai", "text": "AI response/DTMF selection" }
+      ]
+    },
+    {
+      "phase": "hold",
+      "message": "Waiting for human agent",
+      "durationMs": 12000,
+      "holdTime": 45,
+      "transcript": [
+        { "speaker": "system", "text": "Hold music / queue message" }
+      ]
+    },
+    {
+      "phase": "agent",
+      "message": "Speaking with human agent about the task",
+      "durationMs": 15000,
+      "transcript": [
+        { "speaker": "agent", "text": "Human agent greeting" },
+        { "speaker": "ai", "text": "AI states request clearly" },
+        { "speaker": "agent", "text": "Agent responds" },
+        { "speaker": "ai", "text": "AI provides any needed info" },
+        { "speaker": "agent", "text": "Agent confirms/resolves" }
+      ]
+    }
   ],
-  "duration": 180,
+  "outcome": "success" | "partial" | "failed",
+  "summary": "Clear 1–2 sentence summary of what was accomplished",
   "actionItems": ["Action item 1", "Action item 2"],
   "callDetails": {
     "organization": "Name of organization called",
-    "department": "Department or person spoken to",
-    "confirmationNumber": "Any reference/confirmation number obtained or null",
-    "nextSteps": "What happens next"
-  }
+    "department": "Department or agent name",
+    "confirmationNumber": "Reference number if obtained or null",
+    "nextSteps": "What the user should do next or expect"
+  },
+  "totalDuration": 180
 }
 
-Make the transcript realistic — include hold music, IVR navigation, transfers, and natural conversation. Typical call duration 60-360 seconds.`;
+Rules:
+- Make transcripts realistic with actual dialogue, not placeholders
+- IVR should have real menu options relevant to the organization
+- Agent dialogue should be professional and task-specific
+- confirmationNumber should be a realistic alphanumeric code when task succeeds
+- holdTime is seconds the AI waited on hold
+- durationMs is realistic milliseconds each phase takes`;
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -55,7 +92,15 @@ Deno.serve(async (req: Request) => {
 
     const { instruction, userContext } = await req.json();
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    if (!instruction) {
+      return new Response(
+        JSON.stringify({ phase: 'error', error: 'No instruction provided' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Call OnSpace AI to generate the full phased call simulation
+    const aiResponse = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -70,41 +115,79 @@ Deno.serve(async (req: Request) => {
             content: `Complete this task via phone call:\n\n"${instruction}"\n\nUser context: ${userContext || 'Standard user, no special context.'}`,
           },
         ],
-        temperature: 0.7,
+        temperature: 0.75,
         response_format: { type: 'json_object' },
       }),
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`OnSpace AI error: ${errText}`);
+    if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      throw new Error(`OnSpace AI: ${aiResponse.status} ${errText}`);
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content ?? '{}';
+    const aiData = await aiResponse.json();
+    const content = aiData.choices?.[0]?.message?.content ?? '{}';
 
-    let result;
+    let parsed: any;
     try {
-      result = JSON.parse(content);
+      parsed = JSON.parse(content);
     } catch {
-      result = {
-        outcome: 'failed',
-        summary: 'Unable to process the call at this time.',
-        transcript: [],
-        duration: 0,
-        actionItems: [],
-        callDetails: { organization: 'Unknown', department: 'Unknown', confirmationNumber: null, nextSteps: 'Please try again.' },
-      };
+      throw new Error('Failed to parse AI response as JSON');
     }
 
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    const phases: any[] = parsed.phases ?? [];
+    const outcome = parsed.outcome ?? 'failed';
+    const summary = parsed.summary ?? 'Call completed.';
+    const actionItems = parsed.actionItems ?? [];
+    const callDetails = parsed.callDetails ?? { organization: 'Unknown', department: 'Unknown', confirmationNumber: null, nextSteps: 'N/A' };
+    const totalDuration = parsed.totalDuration ?? 120;
+
+    // Stream phase events as NDJSON
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (obj: unknown) => {
+          controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
+        };
+
+        // Stream each phase with its durationMs as a simulated delay
+        for (const phase of phases) {
+          send(phase);
+          // Delay to let client animate this phase (capped at 18s per phase)
+          const delay = Math.min(phase.durationMs ?? 5000, 18000);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+
+        // Final complete event with full result
+        send({
+          phase: 'complete',
+          result: {
+            outcome,
+            summary,
+            actionItems,
+            callDetails,
+            duration: totalDuration,
+            transcript: phases.flatMap((p: any) => p.transcript ?? []),
+          },
+        });
+
+        controller.close();
+      },
     });
+
+    return new Response(stream, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/x-ndjson',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
+
   } catch (error) {
     console.error('AI Dialer error:', error);
     return new Response(
-      JSON.stringify({ error: String(error) }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ phase: 'error', error: String(error) }) + '\n',
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/x-ndjson' } }
     );
   }
 });
