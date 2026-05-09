@@ -26,6 +26,8 @@ export interface CallRecord {
   fact_checks: string[];
   is_blocked: boolean;
   reported_to_ftc: boolean;
+  threat_timeline?: { time: number; score: number }[]; // Per-window scores for timeline chart
+  action_items?: string[];                              // AI-generated recommended actions
   created_at: string;
 }
 

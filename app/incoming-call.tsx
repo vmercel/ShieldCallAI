@@ -24,6 +24,12 @@ import { SentinelEngine } from '../services/sentinelEngine';
 import { communityThreatsService, CommunityThreat } from '../services/communityThreatsService';
 import { answerCall, reportCallEnded } from '../services/callKitService';
 import { sendScamAlertNotification } from '../services/permissionsService';
+import { useSettings } from '../contexts/SettingsContext';
+
+function isQuietHours(): boolean {
+  const hour = new Date().getHours();
+  return hour >= 22 || hour < 8;
+}
 
 function formatLastCall(d?: Date): string {
   if (!d) return 'Never called';
@@ -70,12 +76,16 @@ export default function IncomingCallScreen() {
 
   const callerNumber = params.callerNumber ?? '+1 (800) 555-0982';
   const callUUID = params.callUUID ?? null;
+  const { settings } = useSettings();
 
   // Contact & threat state
   const [contact, setContact] = useState<Contact | null>(findContactByNumberSync(callerNumber));
   const [communityThreat, setCommunityThreat] = useState<CommunityThreat | null>(null);
-  const [threatLoading, setThreatLoading] = useState(true);
+  const [threatLoading, setThreatLoading] = useState(settings.communityFeed);
   const [ringCount, setRingCount] = useState(1);
+
+  // Prevent triggering auto-routing more than once
+  const autoRoutedRef = useRef(false);
 
   // Resolved name
   const callerName = contact?.name ?? params.callerName ?? 'Unknown Caller';
@@ -95,16 +105,35 @@ export default function IncomingCallScreen() {
   const slideAnim = useRef(new Animated.Value(60)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Load real data in parallel
+  // Load real data in parallel + apply behavioral settings
   useEffect(() => {
+    // Quiet hours — auto-route all calls to Ghost Mode immediately
+    if (settings.quietHours && isQuietHours() && !autoRoutedRef.current) {
+      autoRoutedRef.current = true;
+      const t = setTimeout(() => handleGhost(), 600);
+      return () => clearTimeout(t);
+    }
+
+    const digits = callerNumber.replace(/\D/g, '');
+
     // Load real contacts if not already cached
     getAllContacts().then(contacts => {
-      const digits = callerNumber.replace(/\D/g, '');
       const found = contacts.find(c => c.number.replace(/\D/g, '').slice(-7) === digits.slice(-7));
-      if (found) setContact(found);
+      if (found) {
+        setContact(found);
+      } else if (settings.autoScreenUnknown && !autoRoutedRef.current) {
+        // Unknown caller + auto-screen enabled → route to Ghost Mode
+        autoRoutedRef.current = true;
+        setTimeout(() => handleGhost(), 900);
+      }
     });
 
-    // Check community threat DB
+    // Community threat DB check (respects communityFeed setting)
+    if (!settings.communityFeed) {
+      setThreatLoading(false);
+      return;
+    }
+
     communityThreatsService.checkNumber(callerNumber).then(({ data }) => {
       setCommunityThreat(data);
       setThreatLoading(false);
@@ -119,7 +148,7 @@ export default function IncomingCallScreen() {
         });
       }
     });
-  }, [callerNumber]);
+  }, [callerNumber, settings.quietHours, settings.autoScreenUnknown, settings.communityFeed]);
 
   useEffect(() => {
     // Entry animation

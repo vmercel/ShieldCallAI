@@ -6,9 +6,9 @@
  *                 Captures BOTH parties when phone is on speaker, or the caller
  *                 when using device mic during a call.
  *
- * Native        → AcousticSentinel mic amplitude monitoring gives real-time
- *                 acoustic threat signals; text overlay shows "mic active"
- *                 with amplitude waveform — no manual entry needed.
+ * Native        → useNativeSTT: chunked expo-av recording → Deepgram transcription
+ *                 via the transcribe-audio Supabase edge function.
+ *                 Falls back to manual input if DEEPGRAM_API_KEY is not set.
  *
  * Auto-restart  → When SpeechRecognition ends (browser auto-stops after ~60s),
  *                 the hook transparently restarts it — maintaining a seamless
@@ -20,6 +20,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Platform } from 'react-native';
+import { useNativeSTT } from './useNativeSTT';
 
 export interface TranscriptSegment {
   id: string;
@@ -61,9 +62,16 @@ function isWebSpeechSupported(): boolean {
 export function useLiveTranscription(
   onFinalSegment?: OnSegmentCallback,
 ) {
+  const isNative = Platform.OS !== 'web';
+
+  // Native platform: delegate to useNativeSTT
+  const nativeSTT = useNativeSTT(
+    isNative ? onFinalSegment : undefined,
+  );
+
   const [state, setState] = useState<LiveTranscriptionState>({
     isListening: false,
-    isSupported: isWebSpeechSupported(),
+    isSupported: isNative ? true : isWebSpeechSupported(),
     segments: [],
     interimText: '',
     currentSpeaker: 'A',
@@ -173,6 +181,12 @@ export function useLiveTranscription(
   }, [buildRecognition, detectSpeakerTurn, onFinalSegment]);
 
   const start = useCallback(() => {
+    if (isNative) {
+      nativeSTT.start();
+      setState(prev => ({ ...prev, isListening: true, segments: [], wordCount: 0, error: null }));
+      return;
+    }
+
     isActiveRef.current = true;
     sessionStartRef.current = Date.now();
     wordCountRef.current = 0;
@@ -201,11 +215,15 @@ export function useLiveTranscription(
     if (isWebSpeechSupported()) {
       startRecognition();
     }
-    // On native: AcousticSentinel handles mic — no text transcription but
-    // acoustic signals are already fed from useRealCall hook
-  }, [startRecognition]);
+  }, [isNative, nativeSTT, startRecognition]);
 
   const stop = useCallback(() => {
+    if (isNative) {
+      nativeSTT.stop();
+      setState(prev => ({ ...prev, isListening: false }));
+      return;
+    }
+
     isActiveRef.current = false;
     recognitionRef.current?.stop();
     recognitionRef.current = null;
@@ -213,7 +231,7 @@ export function useLiveTranscription(
     durationTimerRef.current && clearInterval(durationTimerRef.current);
 
     setState(prev => ({ ...prev, isListening: false, interimText: '' }));
-  }, []);
+  }, [isNative, nativeSTT]);
 
   const markSegmentAnalyzed = useCallback((id: string, score: number) => {
     setState(prev => ({
@@ -250,6 +268,35 @@ export function useLiveTranscription(
       durationTimerRef.current && clearInterval(durationTimerRef.current);
     };
   }, []);
+
+  // On native, merge nativeSTT state into the returned object
+  if (isNative) {
+    const nativeSegments: TranscriptSegment[] = nativeSTT.segments.map(s => ({
+      id: s.id,
+      text: s.text,
+      isFinal: true,
+      speaker: s.speaker,
+      timestamp: s.timestamp,
+      analyzed: false,
+      threatScore: undefined,
+    }));
+    return {
+      ...state,
+      isListening: nativeSTT.isListening,
+      isSupported: true,
+      segments: nativeSegments,
+      wordCount: nativeSTT.wordCount,
+      error: nativeSTT.error,
+      // Expose acoustic data for waveform rendering
+      amplitudeHistory: nativeSTT.amplitudeHistory,
+      acousticStress: nativeSTT.acousticStress,
+      deepfakeConfidence: nativeSTT.deepfakeConfidence,
+      start,
+      stop,
+      markSegmentAnalyzed,
+      addManualSegment,
+    };
+  }
 
   return {
     ...state,

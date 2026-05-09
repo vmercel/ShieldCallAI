@@ -25,8 +25,9 @@ import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../consta
 import { SentinelEngine } from '../services/sentinelEngine';
 import { AcousticSentinel, AcousticSnapshot } from '../services/acousticSentinel';
 import { ThreatLevel } from '../constants/mockData';
-import { findContactByNumber, getInitials, Contact } from '../constants/contacts';
+import { findContactByNumberSync as findContactByNumber, getInitials, Contact } from '../services/contactsService';
 import { useLiveTranscription, TranscriptSegment } from '../hooks/useLiveTranscription';
+import { useSettings } from '../contexts/SettingsContext';
 import { callRecordsService } from '../services/callRecordsService';
 import { communityThreatsService, CommunityThreat } from '../services/communityThreatsService';
 import { supabase } from '../services/supabaseClient';
@@ -379,6 +380,7 @@ export default function LiveCallScreen() {
   const callerNumber = params.callerNumber ?? '+1 (202) 555-0147';
   const contact = findContactByNumber(callerNumber);
   const callerName = contact?.name ?? params.callerName ?? 'Unknown Caller';
+  const { settings } = useSettings();
 
   const sentinelRef = useRef(new SentinelEngine());
   const acousticRef = useRef(new AcousticSentinel());
@@ -412,6 +414,7 @@ export default function LiveCallScreen() {
   const durationRef = useRef(0);
   const peakScoreRef = useRef(0);                     // Highest score ever seen — ratchet anchor
   const isAnalyzingRef = useRef(false);               // Guard against concurrent Claude calls
+  const threatTimelineRef = useRef<{ time: number; score: number }[]>([]); // Per-window scores
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const listenDotAnim = useRef(new Animated.Value(1)).current;
@@ -419,14 +422,17 @@ export default function LiveCallScreen() {
   const transcriptRef = useRef<ScrollView>(null);
   const factCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Spam check ──────────────────────────────────────────────────────────
+  // ── Spam check (respects communityFeed setting) ──────────────────────────
   useEffect(() => {
-    if (!callerNumber || callerNumber === 'AI-DIALED') { setSpamChecked(true); return; }
+    if (!callerNumber || callerNumber === 'AI-DIALED' || !settings.communityFeed) {
+      setSpamChecked(true);
+      return;
+    }
     communityThreatsService.checkNumber(callerNumber).then(({ data }) => {
       setSpamRecord(data);
       setSpamChecked(true);
     });
-  }, [callerNumber]);
+  }, [callerNumber, settings.communityFeed]);
 
   // ── Core batch analysis — powered by Claude (Anthropic) ──────────────────
   const runBatchAnalysis = useCallback(async () => {
@@ -553,6 +559,9 @@ export default function LiveCallScreen() {
       claudeReasoning,
     };
 
+    // Record per-window score for timeline chart
+    threatTimelineRef.current.push({ time: durationRef.current, score: displayScore });
+
     setResult(newResult);
     isAnalyzingRef.current = false;
     setIsAnalyzing(false);
@@ -626,6 +635,10 @@ export default function LiveCallScreen() {
     transcription.start();
 
     (async () => {
+      if (!settings.deepfakeDetect) {
+        // Deepfake detection disabled — skip AcousticSentinel entirely
+        return;
+      }
       const granted = await acousticRef.current.requestPermission();
       setHasMic(granted);
       if (granted) {
@@ -675,7 +688,8 @@ export default function LiveCallScreen() {
         speaker: s.speaker === 'A' ? (direction === 'outbound' ? 'you' : 'caller') : (direction === 'outbound' ? 'them' : 'you'),
         text: s.text,
       }));
-    callRecordsService.insert({
+    // Generate AI summary asynchronously, then save with action items
+    const baseRecord = {
       caller_name: callerName,
       caller_number: callerNumber,
       caller_org: contact?.org,
@@ -685,7 +699,7 @@ export default function LiveCallScreen() {
       duration_seconds: duration,
       threat_level: result.level,
       threat_score: Math.max(result.score, peakScoreRef.current),
-      scam_type: result.scamType || finalAnalysis.scamType,
+      scam_type: result.scamType || finalAnalysis.scamType || undefined,
       summary: result.claudeReasoning
         ? `Claude SENTINEL™: ${result.claudeReasoning}. Peak threat: ${peakScoreRef.current}%.`
         : result.flags.length > 0
@@ -699,6 +713,31 @@ export default function LiveCallScreen() {
       fact_checks: result.factChecks,
       is_blocked: false,
       reported_to_ftc: false,
+      threat_timeline: threatTimelineRef.current.length > 0 ? threatTimelineRef.current : undefined,
+    };
+
+    callRecordsService.insert(baseRecord).then(async ({ data: saved }) => {
+      if (!saved) return;
+      // Generate AI summary in background and update the record with action items
+      try {
+        const { data: summaryData } = await callRecordsService.generateSummary({
+          transcript: transcriptData,
+          threatScore: Math.max(result.score, peakScoreRef.current),
+          threatLevel: result.level,
+          flags: result.flags,
+          duration,
+          callerName,
+          callerNumber,
+        });
+        if (summaryData) {
+          await callRecordsService.update(saved.id, {
+            summary: summaryData.summary || saved.summary,
+            ai_notes: summaryData.aiNotes || saved.ai_notes,
+            scam_type: summaryData.scamType || saved.scam_type,
+            action_items: summaryData.actionItems || [],
+          });
+        }
+      } catch {}
     }).catch(() => {});
     router.back();
   };

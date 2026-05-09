@@ -3,11 +3,13 @@ import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
 
   return (
+    <ErrorBoundary>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -61,5 +63,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </ErrorBoundary>
   );
 }
