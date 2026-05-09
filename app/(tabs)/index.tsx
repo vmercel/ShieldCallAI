@@ -13,7 +13,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable,
-  Animated, ActivityIndicator, RefreshControl,
+  Animated, ActivityIndicator, RefreshControl, Easing,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,6 +24,61 @@ import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCallRecords } from '../../hooks/useCallRecords';
 import { useCommunityThreats } from '../../hooks/useCommunityThreats';
+
+// ─── Animation Helpers ────────────────────────────────────────────────────────
+function FadeInView({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: any }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(20)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 380, delay, useNativeDriver: true, easing: Easing.out(Easing.cubic) }),
+      Animated.timing(translateY, { toValue: 0, duration: 380, delay, useNativeDriver: true, easing: Easing.out(Easing.cubic) }),
+    ]).start();
+  }, []);
+  return <Animated.View style={[style, { opacity, transform: [{ translateY }] }]}>{children}</Animated.View>;
+}
+
+function SlideInCard({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: any }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.96)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 420, delay, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, tension: 100, friction: 12, delay, useNativeDriver: true }),
+    ]).start();
+  }, []);
+  return <Animated.View style={[style, { opacity, transform: [{ scale }] }]}>{children}</Animated.View>;
+}
+
+function PulseDot({ color, size = 8 }: { color: string; size?: number }) {
+  const s = useRef(new Animated.Value(1)).current;
+  const o = useRef(new Animated.Value(0.8)).current;
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.parallel([
+        Animated.timing(s, { toValue: 1.5, duration: 700, useNativeDriver: true }),
+        Animated.timing(o, { toValue: 0.2, duration: 700, useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.timing(s, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(o, { toValue: 0.8, duration: 700, useNativeDriver: true }),
+      ]),
+    ])).start();
+  }, []);
+  return <Animated.View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, opacity: o, transform: [{ scale: s }] }} />;
+}
+
+// Animated count-up number
+function AnimatedNumber({ value, color, fontSize = 28 }: { value: number; color: string; fontSize?: number }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    Animated.timing(anim, { toValue: value, duration: 900, delay: 300, useNativeDriver: false, easing: Easing.out(Easing.cubic) }).start();
+    const listener = anim.addListener(({ value: v }) => setDisplay(Math.round(v)));
+    return () => anim.removeListener(listener);
+  }, [value]);
+  return <Text style={{ fontSize, fontWeight: '900', color }}>{display}</Text>;
+}
 
 // ─── Live Threat Ticker ────────────────────────────────────────────────────────
 function LiveThreatTicker({ threats }: { threats: { scam_type?: string; report_count: number; region: string; phone_number: string }[] }) {
@@ -315,27 +370,32 @@ export default function HomeScreen() {
       }
     >
       {/* Header */}
-      <View style={styles.header}>
+      <FadeInView style={styles.header}>
         <View>
           <Text style={styles.headerLabel}>CALLSHIELD</Text>
           <Text style={styles.headerSub}>
             {firstName ? `Welcome back, ${firstName}` : 'SENTINEL™ AI Active'}
           </Text>
         </View>
-        <View style={styles.headerStatus}>
-          <View style={styles.activeDot} />
-          <Text style={styles.activeText}>PROTECTED</Text>
-        </View>
+        {/* Header with animated active status dot */}
+      <View style={styles.headerStatus}>
+        <PulseDot color={Colors.safe} size={7} />
+        <Text style={styles.activeText}>PROTECTED</Text>
       </View>
+      </FadeInView>
 
       {/* Live Threat Ticker — Real Community Data */}
-      <LiveThreatTicker threats={threats} />
+      <FadeInView delay={80}>
+        <LiveThreatTicker threats={threats} />
+      </FadeInView>
 
       {/* Protection Status — Real stats only */}
-      <ProtectionStatusCard stats={stats} loading={loading} />
+      <SlideInCard delay={120}>
+        <ProtectionStatusCard stats={stats} loading={loading} />
+      </SlideInCard>
 
       {/* Quick Actions */}
-      <View style={styles.quickRow}>
+      <FadeInView delay={180} style={styles.quickRow}>
         <Pressable
           style={({ pressed }) => [styles.quickBtn, styles.quickPrimary, pressed && { opacity: 0.85 }]}
           onPress={() => router.push('/live-call')}
@@ -350,13 +410,15 @@ export default function HomeScreen() {
           <MaterialIcons name="hearing" size={20} color={Colors.primary} />
           <Text style={styles.quickTextLight}>Ghost Mode</Text>
         </Pressable>
-      </View>
+      </FadeInView>
 
       {/* SENTINEL™ Intelligence — Real Analytics from Call Records */}
-      <SentinelIntelligencePanel stats={stats} calls={calls} />
+      <SlideInCard delay={240}>
+        <SentinelIntelligencePanel stats={stats} calls={calls} />
+      </SlideInCard>
 
       {/* Ghost Mode Toggle */}
-      <View style={styles.ghostCard}>
+      <FadeInView delay={300} style={styles.ghostCard}>
         <View style={styles.ghostLeft}>
           <View style={[styles.ghostIcon, { backgroundColor: ghostModeEnabled ? Colors.primaryGlow : Colors.bgSurface }]}>
             <MaterialIcons name="hearing" size={22} color={ghostModeEnabled ? Colors.primary : Colors.textMuted} />
@@ -377,10 +439,12 @@ export default function HomeScreen() {
         >
           <View style={[styles.toggleThumb, ghostModeEnabled && styles.toggleThumbOn]} />
         </TouchableOpacity>
-      </View>
+      </FadeInView>
 
       {/* Shield Report — Real Stats */}
-      <Text style={styles.sectionTitle}>Shield Report</Text>
+      <FadeInView delay={360}>
+        <Text style={styles.sectionTitle}>Shield Report</Text>
+      </FadeInView>
       {loading ? (
         <View style={styles.statsLoading}>
           <ActivityIndicator color={Colors.primary} />
@@ -392,12 +456,12 @@ export default function HomeScreen() {
             { icon: 'shield', val: stats.scamsBlocked, label: 'Threats\nBlocked', color: Colors.safe, glow: Colors.safeGlow },
             { icon: 'hearing', val: stats.ghostModeCalls, label: 'Ghost AI\nInterventions', color: Colors.primary, glow: Colors.primaryGlow },
             { icon: 'call', val: stats.totalCalls, label: 'Calls\nAnalyzed', color: Colors.warning, glow: Colors.warningGlow },
-          ].map(item => (
-            <View key={item.label} style={[styles.statCard, { backgroundColor: item.glow, borderColor: item.color + '44' }]}>
+          ].map((item, i) => (
+            <SlideInCard key={item.label} delay={400 + i * 80} style={[styles.statCard, { backgroundColor: item.glow, borderColor: item.color + '44' }]}>
               <MaterialIcons name={item.icon as any} size={26} color={item.color} />
-              <Text style={[styles.statNum, { color: item.color }]}>{item.val}</Text>
+              <AnimatedNumber value={item.val} color={item.color} />
               <Text style={styles.statLabel}>{item.label}</Text>
-            </View>
+            </SlideInCard>
           ))}
         </View>
       )}
@@ -533,6 +597,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.safe + '55',
   },
   activeDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: Colors.safe },
+  // kept for reference, PulseDot is used now
   activeText: { fontSize: FontSize.xs, fontWeight: FontWeight.extrabold, color: Colors.safe, letterSpacing: 1 },
 
   ticker: {
