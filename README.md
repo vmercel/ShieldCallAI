@@ -7,6 +7,10 @@ The detector lives in a separate repository: [vmercel/shieldcall-core](https://g
 This repository is a research prototype. It is not a carrier product, not a certified fraud-detection service, and it does not have users or revenue.
 
 <p align="center">
+  <img src="assets/screenshots/hero.png" alt="ShieldCallAI live iOS screens: Shield, live call, Ghost Mode, dialer, insights, and settings" width="100%" />
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Platform-React%20Native%20%7C%20Expo-00B4D8?style=flat-square&logo=expo&logoColor=white" />
   <img src="https://img.shields.io/badge/Language-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" />
   <img src="https://img.shields.io/badge/Status-research%20prototype-yellow?style=flat-square" />
@@ -48,25 +52,31 @@ Those absences are facts, not omissions.
 
 ## Screenshots
 
+Live iOS captures from ShieldCallAI, not mockups.
+
 <table>
   <tr>
-    <td align="center"><strong>Shield Dashboard</strong></td>
-    <td align="center"><strong>Live Call Analysis</strong></td>
-    <td align="center"><strong>Ghost Mode</strong></td>
+    <td align="center" width="25%"><strong>Shield</strong></td>
+    <td align="center" width="25%"><strong>Live Call</strong></td>
+    <td align="center" width="25%"><strong>Ghost Mode</strong></td>
+    <td align="center" width="25%"><strong>AI Dialer</strong></td>
   </tr>
   <tr>
-    <td><img src="assets/screenshots/screen_shield.png" width="220" /></td>
-    <td><img src="assets/screenshots/screen_livecall.png" width="220" /></td>
-    <td><img src="assets/screenshots/screen_ghost.png" width="220" /></td>
+    <td><img src="assets/screenshots/shield.png" alt="Shield dashboard: SENTINEL monitoring, Live Call Analysis and Ghost Mode" width="200" /></td>
+    <td><img src="assets/screenshots/live-call.png" alt="Live inbound call: SENTINEL scoring an unknown caller in real time" width="200" /></td>
+    <td><img src="assets/screenshots/ghost-mode.png" alt="Ghost Mode: Alex listening, Join Call, Expose Mode, End" width="200" /></td>
+    <td><img src="assets/screenshots/dialer.png" alt="AI Dialer: voice command, keypad, agent, and favorite contacts" width="200" /></td>
   </tr>
   <tr>
-    <td align="center"><strong>AI Dialer</strong></td>
     <td align="center"><strong>Insights</strong></td>
+    <td align="center"><strong>Call History</strong></td>
+    <td align="center"><strong>Settings</strong></td>
     <td></td>
   </tr>
   <tr>
-    <td><img src="assets/screenshots/screen_dialer.png" width="220" /></td>
-    <td><img src="assets/screenshots/screen_insights.png" width="220" /></td>
+    <td><img src="assets/screenshots/insights.png" alt="Insights: personal fraud report and SENTINEL engine capabilities" width="200" /></td>
+    <td><img src="assets/screenshots/call-history.png" alt="Call History: search and filter by direction and risk" width="200" /></td>
+    <td><img src="assets/screenshots/settings.png" alt="Settings: Ghost Mode, voice persona, quiet hours, acoustic detection" width="200" /></td>
     <td></td>
   </tr>
 </table>
