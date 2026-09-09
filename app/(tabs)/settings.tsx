@@ -279,7 +279,7 @@ export default function SettingsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.profileName}>{displayName}</Text>
             {displayEmail ? <Text style={styles.profileEmail}>{displayEmail}</Text> : (
-              <Text style={styles.profileEmail}>Using ShieldCall as a guest — no account required</Text>
+              <Text style={styles.profileEmail}>Not signed in. Sign in to save call history.</Text>
             )}
             <View style={styles.tierBadge}>
               <Text style={styles.tierText}>FREE</Text>
@@ -405,7 +405,7 @@ export default function SettingsScreen() {
             </>
           ) : (
             <TouchableOpacity onPress={() => router.push('/onboarding')} activeOpacity={0.8}>
-              <SettingRow icon="login" label="Create account (optional)" sub="ShieldCall is free. An account is not required to use Live Protect.">
+              <SettingRow icon="login" label="Sign in or create account" sub="Required to save call history and your profile in ShieldCall.">
                 <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
               </SettingRow>
             </TouchableOpacity>

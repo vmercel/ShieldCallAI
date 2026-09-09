@@ -57,7 +57,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  signUp: (email: string, password: string, fullName: string, phone: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, fullName: string, phone: string) => Promise<{ error: string | null; needsOtp: boolean }>;
   verifyOtp: (email: string, token: string) => Promise<{ error: string | null }>;
   resendOtp: (email: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
@@ -77,21 +77,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [labMode, setLabMode] = useState(false);
 
   // ── Fetch user profile from Supabase ──────────────────────────────────────
-  const fetchProfile = useCallback(async (userId: string) => {
+  const ensureProfile = useCallback(async (authed: User) => {
+    const meta = authed.user_metadata ?? {};
+    const row = {
+      id: authed.id,
+      email: authed.email ?? '',
+      full_name: (meta.full_name as string) || '',
+      phone: (meta.phone as string) || '',
+      username: (meta.username as string) || (authed.email ?? '').split('@')[0],
+      avatar_color: '#00B4D8',
+      persona_name: 'Alex',
+      ghost_mode_enabled: true,
+      plan: 'free',
+      updated_at: new Date().toISOString(),
+    };
+    await supabase.from('user_profiles').upsert(row, { onConflict: 'id' });
+  }, []);
+
+  const fetchProfile = useCallback(async (authed: User) => {
     try {
+      await ensureProfile(authed);
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
-        .eq('id', userId)
+        .eq('id', authed.id)
         .single();
       if (!error && data) {
         setProfile(data as UserProfile);
       }
     } catch {}
-  }, []);
+  }, [ensureProfile]);
 
   const refreshProfile = useCallback(async () => {
-    if (user) await fetchProfile(user.id);
+    if (user) await fetchProfile(user);
   }, [user, fetchProfile]);
 
   // ── Session recovery on mount ──────────────────────────────────────────────
@@ -107,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
       setUser(s?.user ?? null);
-      if (s?.user) fetchProfile(s.user.id);
+      if (s?.user) fetchProfile(s.user);
       finish();
     }).catch(() => {
       finish();
@@ -121,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(s);
         setUser(s?.user ?? null);
         if (s?.user) {
-          fetchProfile(s.user.id);
+          fetchProfile(s.user);
         } else {
           setProfile(null);
         }
@@ -151,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fullName: string,
     phone: string,
   ): Promise<{ error: string | null }> => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
       options: {
@@ -162,9 +180,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       },
     });
-    if (error) return { error: error.message };
-    return { error: null };
-  }, []);
+    if (error) return { error: error.message, needsOtp: true };
+    if (data.session && data.user) await fetchProfile(data.user);
+    return { error: null, needsOtp: !data.session };
+  }, [fetchProfile]);
 
   const signInLabTester = useCallback(async (): Promise<{ error: string | null }> => {
     if (!__DEV__) return { error: 'Lab tester is only available in development builds.' };
@@ -245,7 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', user.id);
     if (error) return { error: error.message };
-    await fetchProfile(user.id);
+    await fetchProfile(user);
     return { error: null };
   }, [user, fetchProfile, labMode]);
 

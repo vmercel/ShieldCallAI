@@ -354,7 +354,12 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
 }
 
 // ─── Sign Up Screen ───────────────────────────────────────────────────────────
-function SignUpScreen({ onSignIn, onSuccess, onSkip }: { onSignIn: () => void; onSuccess: (email: string) => void; onSkip: () => void }) {
+function SignUpScreen({ onSignIn, onSuccess, onSignedIn, onSkip }: {
+  onSignIn: () => void;
+  onSuccess: (email: string) => void;
+  onSignedIn: () => void;
+  onSkip: () => void;
+}) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -375,10 +380,11 @@ function SignUpScreen({ onSignIn, onSuccess, onSkip }: { onSignIn: () => void; o
     if (password !== confirmPwd) return setFieldError('Passwords do not match.');
 
     setLoading(true);
-    const { error } = await signUp(email, password, fullName, phone);
+    const { error, needsOtp } = await signUp(email, password, fullName, phone);
     setLoading(false);
     if (error) { setFieldError(error); }
-    else { onSuccess(email.trim().toLowerCase()); }
+    else if (needsOtp) { onSuccess(email.trim().toLowerCase()); }
+    else { onSignedIn(); }
   };
 
   return (
@@ -389,7 +395,7 @@ function SignUpScreen({ onSignIn, onSuccess, onSkip }: { onSignIn: () => void; o
           <MaterialIcons name="shield" size={40} color={Colors.primary} />
         </View>
         <Text style={styles.authTitle}>Create Account</Text>
-        <Text style={styles.authSubtitle}>Optional. ShieldCall is free and works without an account.</Text>
+        <Text style={styles.authSubtitle}>Save your calls and profile to ShieldCall. Free.</Text>
 
         <View style={styles.form}>
           <AuthInput icon="person" placeholder="Full Name" value={fullName} onChangeText={setFullName} autoCapitalize="words" />
@@ -408,7 +414,7 @@ function SignUpScreen({ onSignIn, onSuccess, onSkip }: { onSignIn: () => void; o
 
         <View style={styles.privacyBox}>
           <MaterialIcons name="lock" size={14} color={Colors.primary} />
-          <Text style={styles.privacyText}>ShieldCall analyzes the conversation on this phone while the call is ongoing and slides in a summary tile every chunk. An account is not required.</Text>
+          <Text style={styles.privacyText}>Your email is stored in Supabase Auth so call history can sync to this account. You can delete your data anytime in Settings.</Text>
         </View>
 
         <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={handleSignUp} disabled={loading} activeOpacity={0.85}>
@@ -423,7 +429,7 @@ function SignUpScreen({ onSignIn, onSuccess, onSkip }: { onSignIn: () => void; o
           <Text style={styles.switchText}>Already have an account? <Text style={styles.switchLink}>Sign In</Text></Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={onSkip} style={styles.switchBtn} activeOpacity={0.8}>
-          <Text style={styles.switchLink}>Continue without an account</Text>
+          <Text style={styles.switchLink}>Use on this phone without saving history</Text>
         </TouchableOpacity>
         <Text style={styles.legalText}>
           By creating an account you agree to our{' '}
@@ -462,7 +468,7 @@ function SignInScreen({ onSignUp, onSuccess, onForgotPassword, onSkip }: { onSig
           <MaterialIcons name="shield" size={40} color={Colors.primary} />
         </View>
         <Text style={styles.authTitle}>Welcome Back</Text>
-        <Text style={styles.authSubtitle}>Sign in is optional. ShieldCall is free.</Text>
+        <Text style={styles.authSubtitle}>Sign in to your ShieldCall account.</Text>
 
         <View style={styles.form}>
           <AuthInput icon="email" placeholder="Email Address" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
@@ -493,7 +499,7 @@ function SignInScreen({ onSignUp, onSuccess, onForgotPassword, onSkip }: { onSig
           <Text style={styles.switchText}>New to ShieldCall? <Text style={styles.switchLink}>Create Account</Text></Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={onSkip} style={styles.switchBtn} activeOpacity={0.8}>
-          <Text style={styles.switchLink}>Continue without an account</Text>
+          <Text style={styles.switchLink}>Use on this phone without saving history</Text>
         </TouchableOpacity>
         {__DEV__ ? (
           <TouchableOpacity
@@ -564,7 +570,7 @@ export default function OnboardingScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { setOnboarded, setPersonaName } = useApp();
+  const { setOnboarded, setPersonaName, isOnboarded } = useApp();
   const { updateProfile, signInLabTester } = useAuth();
 
   const goSlide = (idx: number) => {
@@ -574,7 +580,7 @@ export default function OnboardingScreen() {
 
   const goNext = () => {
     if (slideIndex < SLIDES.length - 1) { goSlide(slideIndex + 1); }
-    else { setScreen('consent'); }
+    else { setScreen('signup'); }
   };
 
   const handleSignUpSuccess = (email: string) => {
@@ -582,8 +588,15 @@ export default function OnboardingScreen() {
     setScreen('otp');
   };
 
-  const handleOtpSuccess = () => setScreen('consent');
-  const handleSignInSuccess = () => setScreen('consent');
+  const finishAuth = async () => {
+    if (isOnboarded) {
+      router.replace('/(tabs)');
+      return;
+    }
+    setScreen('consent');
+  };
+  const handleOtpSuccess = () => { finishAuth(); };
+  const handleSignInSuccess = () => { finishAuth(); };
 
   const handleActivate = async (personaName: string) => {
     await Promise.all([
@@ -604,7 +617,12 @@ export default function OnboardingScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => setScreen('slides')}>
           <MaterialIcons name="arrow-back" size={22} color={Colors.textSecondary} />
         </TouchableOpacity>
-        <SignUpScreen onSignIn={() => setScreen('signin')} onSuccess={handleSignUpSuccess} onSkip={() => setScreen('consent')} />
+        <SignUpScreen
+          onSignIn={() => setScreen('signin')}
+          onSuccess={handleSignUpSuccess}
+          onSignedIn={handleSignInSuccess}
+          onSkip={() => setScreen('consent')}
+        />
       </View>
     );
   }
@@ -762,14 +780,8 @@ export default function OnboardingScreen() {
           </Text>
           <MaterialIcons name="arrow-forward" size={20} color={Colors.textInverse} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setScreen('consent')} style={styles.alreadyBtn} activeOpacity={0.8}>
-          <Text style={styles.alreadyLink}>Continue without an account</Text>
-        </TouchableOpacity>
         <TouchableOpacity onPress={() => setScreen('signin')} style={styles.alreadyBtn} activeOpacity={0.8}>
           <Text style={styles.alreadyText}>Have an account? <Text style={styles.alreadyLink}>Sign in</Text></Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setScreen('signup')} style={styles.alreadyBtn} activeOpacity={0.8}>
-          <Text style={styles.alreadyText}>Create an account <Text style={styles.alreadyLink}>(optional)</Text></Text>
         </TouchableOpacity>
         {__DEV__ ? (
           <TouchableOpacity
