@@ -7,11 +7,11 @@
 
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../constants/theme';
-import { requestAllPermissions, PermissionsState } from '../services/permissionsService';
+import { requestCallingPermissions, PermissionsState } from '../services/permissionsService';
 
 interface PermissionItem {
   key: keyof PermissionsState;
@@ -23,32 +23,18 @@ interface PermissionItem {
 
 const PERMISSION_ITEMS: PermissionItem[] = [
   {
-    key: 'microphone',
-    icon: 'mic',
-    title: 'Microphone',
-    description: 'Required for real-time SENTINEL™ call analysis and AcousticSentinel™ deepfake detection.',
-    required: true,
-  },
-  {
     key: 'contacts',
     icon: 'contacts',
     title: 'Contacts',
-    description: 'Reads this phone\'s address book so you can search, say a name, and dial like a Phone app.',
+    description: 'So you can say a name and ShieldCall dials that person.',
     required: true,
   },
   {
-    key: 'phone',
-    icon: 'phone-in-talk',
-    title: 'Phone',
-    description: 'On Android, lets ShieldCall place calls and ask to become the default Phone app. On iOS this is handled by CallKit in a native build.',
-    required: false,
-  },
-  {
-    key: 'notifications',
-    icon: 'notifications-active',
-    title: 'Notifications',
-    description: 'Alerts you to high-risk calls, scam detections, and post-call SENTINEL™ reports.',
-    required: false,
+    key: 'microphone',
+    icon: 'mic',
+    title: 'Microphone',
+    description: 'So ShieldCall can score the live call for scams and AI voices.',
+    required: true,
   },
 ];
 
@@ -64,7 +50,7 @@ export function PermissionsScreen({ onComplete, onSkip }: PermissionsScreenProps
 
   const handleRequest = async () => {
     setRequesting(true);
-    const perms = await requestAllPermissions();
+    const perms = await requestCallingPermissions();
     setResult(perms);
     setRequesting(false);
     setDone(true);
@@ -97,10 +83,10 @@ export function PermissionsScreen({ onComplete, onSkip }: PermissionsScreenProps
         <MaterialIcons name="verified-user" size={48} color={Colors.primary} />
       </View>
 
-      <Text style={styles.title}>Enable Full Protection</Text>
+      <Text style={styles.title}>Set up calling</Text>
       <Text style={styles.subtitle}>
-        CallShield works best with these permissions.{'\n'}
-        You can change them anytime in iOS Settings.
+        Tap Allow. iOS will ask for Contacts and Microphone.{'\n'}
+        That is the whole setup.
       </Text>
 
       <View style={styles.permList}>
@@ -127,7 +113,7 @@ export function PermissionsScreen({ onComplete, onSkip }: PermissionsScreenProps
                 {done && status !== 'undetermined' && (
                   <Text style={[styles.permStatus, { color: statusColor(status) }]}>
                     {statusLabel(status)}
-                    {status === 'denied' ? ' — enable in Settings → CallShield' : ''}
+                    {status === 'denied' ? '. Turn them on in this app\'s iOS settings page.' : ''}
                   </Text>
                 )}
               </View>
@@ -135,19 +121,6 @@ export function PermissionsScreen({ onComplete, onSkip }: PermissionsScreenProps
           );
         })}
       </View>
-
-      {Platform.OS === 'ios' && (
-        <View style={styles.callkitNote}>
-          <MaterialIcons name="phone-in-talk" size={15} color={Colors.primary} />
-          <Text style={styles.callkitNoteText}>
-            To use CallShield as your default call screener, go to{' '}
-            <Text style={{ color: Colors.primary, fontWeight: FontWeight.bold }}>
-              Settings → Phone → Call Blocking & Identification
-            </Text>
-            {' '}and enable CallShield after installing.
-          </Text>
-        </View>
-      )}
 
       {!done ? (
         <TouchableOpacity
@@ -160,15 +133,15 @@ export function PermissionsScreen({ onComplete, onSkip }: PermissionsScreenProps
             <ActivityIndicator color={Colors.textInverse} size="small" />
           ) : (
             <>
-              <MaterialIcons name="security" size={18} color={Colors.textInverse} />
-              <Text style={styles.btnText}>Grant Permissions</Text>
+              <MaterialIcons name="check" size={18} color={Colors.textInverse} />
+              <Text style={styles.btnText}>Allow</Text>
             </>
           )}
         </TouchableOpacity>
       ) : (
         <TouchableOpacity style={styles.btn} onPress={onComplete} activeOpacity={0.85}>
-          <MaterialIcons name="shield" size={18} color={Colors.textInverse} />
-          <Text style={styles.btnText}>Launch CallShield</Text>
+          <MaterialIcons name="phone" size={18} color={Colors.textInverse} />
+          <Text style={styles.btnText}>Start calling</Text>
         </TouchableOpacity>
       )}
 

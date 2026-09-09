@@ -89,6 +89,29 @@ async function checkAndroidPhonePermission(): Promise<PermissionStatus> {
   }
 }
 
+export async function requestCallingPermissions(): Promise<PermissionsState> {
+  const results: PermissionsState = {
+    microphone: 'undetermined',
+    contacts: 'undetermined',
+    notifications: 'undetermined',
+    phone: 'undetermined',
+  };
+  try {
+    const { status } = await Contacts.requestPermissionsAsync();
+    results.contacts = mapStatus(status);
+  } catch {
+    results.contacts = 'denied';
+  }
+  try {
+    const { status } = await Audio.requestPermissionsAsync();
+    results.microphone = mapStatus(status);
+  } catch {
+    results.microphone = 'denied';
+  }
+  results.phone = await requestAndroidPhonePermissions();
+  return results;
+}
+
 export async function requestAllPermissions(): Promise<PermissionsState> {
   const results: PermissionsState = {
     microphone: 'undetermined',

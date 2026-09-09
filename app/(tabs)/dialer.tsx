@@ -22,16 +22,17 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../../constants/theme';
 import {
   Contact, getInitials, findContactByNumberSync, searchContactsSync, getAllContacts,
-  ensureContactsPermission, getFavoritesSync,
+  getFavoritesSync,
 } from '../../services/contactsService';
 import { placeRealCall } from '../../services/phoneCall';
-import { requestAllPermissions } from '../../services/permissionsService';
+import { checkAllPermissions } from '../../services/permissionsService';
 import * as Speech from 'expo-speech';
 import { useVoiceCommand } from '../../hooks/useVoiceCommand';
 import { parseVoiceCommand } from '../../services/voiceCommandService';
 import { aiDialerService, DialerResult } from '../../services/aiDialerService';
 import { callRecordsService } from '../../services/callRecordsService';
 import { ContactsBook } from '../../components/ContactsBook';
+import { PhoneSetupSheet } from '../../components/PhoneSetupSheet';
 
 const findContactByNumber = findContactByNumberSync;
 
@@ -707,14 +708,14 @@ export default function DialerScreen() {
   const [deviceContacts, setDeviceContacts] = useState<Contact[]>([]);
   const [contactPerm, setContactPerm] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [loadingContacts, setLoadingContacts] = useState(true);
+  const [setupOpen, setSetupOpen] = useState(false);
 
   const loadContacts = useCallback(async () => {
     setLoadingContacts(true);
-    await requestAllPermissions();
-    const ok = await ensureContactsPermission();
-    setContactPerm(ok ? 'granted' : 'denied');
-    if (ok) setDeviceContacts(await getAllContacts());
-    else setDeviceContacts([]);
+    const state = await checkAllPermissions();
+    const ok = state.contacts === 'granted';
+    setContactPerm(ok ? 'granted' : state.contacts === 'denied' ? 'denied' : 'unknown');
+    setDeviceContacts(ok ? await getAllContacts() : []);
     setLoadingContacts(false);
   }, []);
 
@@ -789,6 +790,18 @@ export default function DialerScreen() {
         ))}
       </View>
 
+      {contactPerm !== 'granted' && !loadingContacts ? (
+        <TouchableOpacity style={styles.setupBanner} onPress={() => setSetupOpen(true)} activeOpacity={0.85}>
+          <MaterialIcons name="phone-in-talk" size={18} color={Colors.primary} />
+          <Text style={styles.setupBannerText}>
+            {contactPerm === 'denied'
+              ? 'Turn on Contacts to call by name'
+              : 'Allow Contacts to call by name'}
+          </Text>
+          <Text style={styles.setupBannerCta}>Set up</Text>
+        </TouchableOpacity>
+      ) : null}
+
       <View style={{ flex: 1 }}>
         {tab === 'pad' && (
           <ScrollView showsVerticalScrollIndicator={false}
@@ -819,11 +832,17 @@ export default function DialerScreen() {
               contacts={deviceContacts}
               permission={contactPerm}
               loading={loadingContacts}
-              onAskPermission={loadContacts}
+              onAskPermission={() => setSetupOpen(true)}
             />
           </View>
         )}
       </View>
+
+      <PhoneSetupSheet
+        visible={setupOpen}
+        onClose={() => { setSetupOpen(false); loadContacts(); }}
+        onReady={() => { setSetupOpen(false); loadContacts(); }}
+      />
 
       {showConfirm && (
         <ConfirmCallModal
@@ -844,6 +863,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md, marginBottom: Spacing.sm,
   },
   headerTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.text },
+  setupBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: Spacing.md, marginBottom: Spacing.sm,
+    backgroundColor: Colors.primaryGlow, borderRadius: Radius.md,
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderWidth: 1, borderColor: Colors.borderStrong,
+  },
+  setupBannerText: { flex: 1, fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.medium },
+  setupBannerCta: { fontSize: FontSize.sm, fontWeight: FontWeight.extrabold, color: Colors.primary },
   sentinelPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: Colors.primaryGlow, paddingHorizontal: 10, paddingVertical: 5,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
-  Platform, Modal, TextInput, ActivityIndicator, Linking,
+  Platform, Modal, TextInput, ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,10 +9,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { checkAllPermissions, PermissionsState, requestAllPermissions, requestContactsPermission } from '../../services/permissionsService';
+import { checkAllPermissions, PermissionsState } from '../../services/permissionsService';
 import { supabase } from '../../services/supabaseClient';
 import { sidecarHealth } from '../../services/shieldcallSidecar';
-import { promptDefaultDialer, defaultDialerHelp } from '../../services/defaultDialer';
+import { PhoneSetupSheet, callingIsReady } from '../../components/PhoneSetupSheet';
 
 function SettingRow({ icon, label, sub, iconColor, children }: {
   icon: string; label: string; sub?: string; iconColor?: string; children?: React.ReactNode;
@@ -147,6 +147,7 @@ export default function SettingsScreen() {
     phone: 'undetermined',
   });
   const [coreStatus, setCoreStatus] = useState('Checking shieldcall-core…');
+  const [setupOpen, setSetupOpen] = useState(false);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -296,53 +297,29 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        <Text style={styles.sectionTitle}>Phone app</Text>
+        <PhoneSetupSheet
+          visible={setupOpen}
+          onClose={() => {
+            setSetupOpen(false);
+            checkAllPermissions().then(setPermissions);
+          }}
+          onReady={() => checkAllPermissions().then(setPermissions)}
+        />
+
+        <Text style={styles.sectionTitle}>Calling</Text>
         <View style={styles.section}>
-          <TouchableOpacity onPress={() => promptDefaultDialer()} activeOpacity={0.85}>
+          <TouchableOpacity onPress={() => setSetupOpen(true)} activeOpacity={0.85}>
             <SettingRow
               icon="phone-in-talk"
-              label="Use as default Phone app"
-              sub={defaultDialerHelp()}
-              iconColor={Colors.primary}
+              label={callingIsReady(permissions) ? 'Calling is ready' : 'Set up calling'}
+              sub={callingIsReady(permissions)
+                ? 'Contacts and Microphone are on. Say a name to dial.'
+                : 'One tap. Allow Contacts and Microphone. That is the whole setup.'}
+              iconColor={callingIsReady(permissions) ? Colors.safe : Colors.primary}
             >
-              <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
-            </SettingRow>
-          </TouchableOpacity>
-          <View style={styles.divider} />
-          <TouchableOpacity
-            onPress={async () => {
-              const status = await requestContactsPermission();
-              if (status !== 'granted') await Linking.openSettings();
-              checkAllPermissions().then(setPermissions);
-            }}
-            activeOpacity={0.85}
-          >
-            <SettingRow
-              icon="contacts"
-              label="Contacts access"
-              sub="Needed to search this phone and say Call, then a name"
-              iconColor={permissions.contacts === 'granted' ? Colors.safe : Colors.primary}
-            >
-              <Text style={[styles.permBadgeText, { color: permissions.contacts === 'granted' ? Colors.safe : Colors.warning }]}>
-                {permissions.contacts === 'granted' ? 'Granted' : 'Tap to allow'}
+              <Text style={[styles.permBadgeText, { color: callingIsReady(permissions) ? Colors.safe : Colors.warning }]}>
+                {callingIsReady(permissions) ? 'Ready' : 'Set up'}
               </Text>
-            </SettingRow>
-          </TouchableOpacity>
-          <View style={styles.divider} />
-          <TouchableOpacity
-            onPress={async () => {
-              await requestAllPermissions();
-              checkAllPermissions().then(setPermissions);
-            }}
-            activeOpacity={0.85}
-          >
-            <SettingRow
-              icon="security"
-              label="Grant all Phone permissions"
-              sub="Contacts, microphone, notifications, and on Android the Phone role"
-              iconColor={Colors.primary}
-            >
-              <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
             </SettingRow>
           </TouchableOpacity>
         </View>
@@ -369,7 +346,7 @@ export default function SettingsScreen() {
               <Text style={styles.settingSub}>Required so ShieldCall can analyze this phone's live conversation</Text>
             </View>
             <TouchableOpacity
-              onPress={() => Linking.openSettings()}
+              onPress={() => setSetupOpen(true)}
               style={[styles.permBadge, { backgroundColor: micColor + '1A', borderColor: micColor + '55' }]}
               activeOpacity={0.8}
             >
