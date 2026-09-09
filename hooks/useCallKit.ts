@@ -65,11 +65,13 @@ export function useCallKit(opts?: {
 
     // Register event listeners
     const unregister = registerCallKitEvents({
-      onAnswerCall: (callUUID) => {
+      onAnswerCall: (callUUID, callerNumber, callerName) => {
         const call = activeCallRef.current;
-        if (call) {
-          opts?.onAnswerCall?.(callUUID, call.callerName, call.callerNumber);
-        }
+        opts?.onAnswerCall?.(
+          callUUID,
+          callerName || call?.callerName || '',
+          callerNumber || call?.callerNumber || '',
+        );
       },
       onEndCall: (callUUID) => {
         setActiveCall(null);

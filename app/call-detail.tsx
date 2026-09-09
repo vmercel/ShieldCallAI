@@ -13,12 +13,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../constants/theme';
-import { GHOST_CONVERSATION, ThreatLevel } from '../constants/mockData';
+import { ThreatLevel } from '../constants/mockData';
 import { ThreatService } from '../services/threatService';
 import { SentinelEngine } from '../services/sentinelEngine';
 import { callRecordsService, CallRecord } from '../services/callRecordsService';
 import { blockedNumbersService } from '../services/blockedNumbersService';
 import { communityThreatsService, CommunityThreat } from '../services/communityThreatsService';
+import { placeRealCall } from '../services/phoneCall';
 
 // ─── Community Impact Section (Real Data) ─────────────────────────────────────
 function CommunityImpactSection({ callerNumber, threatLevel, threatScore }: {
@@ -129,15 +130,6 @@ function buildTranscript(call: AdaptedCall) {
       speaker: (t.speaker === 'caller' || t.speaker === 'them') ? 'caller' as const : 'ai' as const,
       text: t.text,
       score: call.threatLevel !== 'safe' ? Math.min(100, (i / call.rawTranscript.length) * call.threatScore) : 0,
-      ts: new Date(call.timestamp.getTime() + i * 20000),
-    }));
-  }
-  if (call.ghostHandled && call.threatLevel !== 'safe') {
-    return GHOST_CONVERSATION.map((line, i) => ({
-      id: `t${i}`,
-      speaker: line.role as 'ai' | 'caller',
-      text: line.text,
-      score: line.role === 'caller' ? Math.min(100, (i / GHOST_CONVERSATION.length) * call.threatScore) : 0,
       ts: new Date(call.timestamp.getTime() + i * 20000),
     }));
   }
@@ -365,9 +357,18 @@ export default function CallDetailScreen() {
     } catch {}
   }, [call, transcript, showToast]);
 
-  const handleCallBack = useCallback(() => {
+  const handleCallBack = useCallback(async () => {
     if (!call) return;
-    router.push({ pathname: '/live-call', params: { callerName: call.callerName, callerNumber: call.callerNumber, direction: 'outbound' } });
+    const { uuid } = await placeRealCall({ name: call.callerName, number: call.callerNumber });
+    router.push({
+      pathname: '/live-call',
+      params: {
+        callerName: call.callerName,
+        callerNumber: call.callerNumber,
+        direction: 'outbound',
+        callUUID: uuid,
+      },
+    });
   }, [call, router]);
 
   const startReplay = useCallback(() => { setReplayIndex(0); setReplaying(true); }, []);
