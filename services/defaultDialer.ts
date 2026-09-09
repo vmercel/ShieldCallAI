@@ -15,6 +15,14 @@ export function deniedSettingsHint(): string {
   return `In Settings tap ${hostAppLabel()}, then turn on Contacts and Microphone. Come back here when that is done.`;
 }
 
+/** Kept so Fast Refresh of Settings cannot crash on a removed export. */
+export function defaultDialerHelp(): string {
+  if (Platform.OS === 'android') {
+    return 'Set ShieldCall as the default Phone app so incoming and outgoing calls open here.';
+  }
+  return 'Tap Set up calling. Allow Contacts and Microphone. That is the whole setup.';
+}
+
 export async function promptDefaultDialer(): Promise<boolean> {
   if (Platform.OS !== 'android') return false;
   try {
