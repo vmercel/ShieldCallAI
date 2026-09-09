@@ -33,7 +33,14 @@ const PERMISSION_ITEMS: PermissionItem[] = [
     key: 'contacts',
     icon: 'contacts',
     title: 'Contacts',
-    description: 'Identifies callers from your phonebook so you know exactly who is calling before you answer.',
+    description: 'Reads this phone\'s address book so you can search, say a name, and dial like a Phone app.',
+    required: true,
+  },
+  {
+    key: 'phone',
+    icon: 'phone-in-talk',
+    title: 'Phone',
+    description: 'On Android, lets ShieldCall place calls and ask to become the default Phone app. On iOS this is handled by CallKit in a native build.',
     required: false,
   },
   {

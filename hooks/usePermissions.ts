@@ -37,6 +37,7 @@ export function usePermissions(): UsePermissionsReturn {
     microphone: 'undetermined',
     contacts: 'undetermined',
     notifications: 'undetermined',
+    phone: 'undetermined',
   });
   const [isLoading, setIsLoading] = useState(true);
   const [wereRequested, setWereRequested] = useState(false);
@@ -79,7 +80,7 @@ export function usePermissions(): UsePermissionsReturn {
 
   // On web, everything is "granted" or unavailable
   const effectivePermissions: PermissionsState = Platform.OS === 'web'
-    ? { microphone: 'granted', contacts: 'granted', notifications: 'granted' }
+    ? { microphone: 'granted', contacts: 'granted', notifications: 'granted', phone: 'granted' }
     : permissions;
 
   const allGranted = effectivePermissions.contacts === 'granted'

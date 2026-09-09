@@ -10,15 +10,18 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors } from '../constants/theme';
 import { router } from 'expo-router';
 import { registerCallKitEvents, setupCallKit } from '../services/callKitService';
-import { registerPushToken } from '../services/permissionsService';
-import { getAllContacts } from '../services/contactsService';
+import { registerPushToken, requestAllPermissions } from '../services/permissionsService';
+import { ensureContactsPermission, getAllContacts } from '../services/contactsService';
 
 // Initialize global services on app start
 function AppInitializer() {
   useEffect(() => {
     if (Platform.OS === 'web') return;
     setupCallKit();
-    getAllContacts().catch(() => {});
+    requestAllPermissions()
+      .then(() => ensureContactsPermission())
+      .then(ok => { if (ok) return getAllContacts(); })
+      .catch(() => {});
     registerPushToken().catch(() => {});
     const unregister = registerCallKitEvents({
       onIncomingCall: (callUUID, callerNumber, callerName) => {

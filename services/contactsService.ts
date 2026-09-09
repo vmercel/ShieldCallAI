@@ -1,14 +1,6 @@
 /**
- * CALLSHIELD Contacts Service — Real Device Contacts via expo-contacts
- *
- * Replaces the mock constants/contacts.ts with real device contact lookup.
- * Falls back to the static mock list if permission is denied.
- *
- * Key features:
- * - Loads contacts from device with caching (60-second TTL)
- * - Name + number lookup
- * - Graceful fallback to mock data
- * - Initials + avatar color generation
+ * Device contacts via expo-contacts.
+ * Empty list if permission is denied. No mock phone book.
  */
 
 import { Platform } from 'react-native';
@@ -184,19 +176,22 @@ export function getFavoritesSync(): Contact[] {
   return all.slice(0, 8);
 }
 
-export function searchContactsSync(query: string): Contact[] {
-  const all = cachedContacts ?? [];
-  if (!query.trim()) return all;
+export function filterContacts(list: Contact[], query: string): Contact[] {
+  if (!query.trim()) return list;
   const q = query.toLowerCase().trim();
   const digits = q.replace(/\D/g, '');
-  return all.filter(c =>
+  return list.filter(c =>
     c.name.toLowerCase().includes(q) ||
     c.firstName.toLowerCase().includes(q) ||
     c.lastName.toLowerCase().includes(q) ||
-    (digits.length >= 3 && c.number.replace(/\D/g, '').includes(digits)) ||
+    (digits.length >= 2 && c.number.replace(/\D/g, '').includes(digits)) ||
     (c.org?.toLowerCase().includes(q) ?? false) ||
     (c.relationship?.toLowerCase().includes(q) ?? false)
   );
+}
+
+export function searchContactsSync(query: string): Contact[] {
+  return filterContacts(cachedContacts ?? [], query);
 }
 
 export function findContactByNameSync(name: string): Contact | null {

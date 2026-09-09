@@ -6,9 +6,10 @@
  * iOS is the primary platform — all permission strings match infoPlist.
  */
 
-import { Platform } from 'react-native';
+import { PermissionsAndroid, Platform } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import * as Notifications from 'expo-notifications';
+import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabaseClient';
 
@@ -20,6 +21,7 @@ export interface PermissionsState {
   microphone: PermissionStatus;
   contacts: PermissionStatus;
   notifications: PermissionStatus;
+  phone: PermissionStatus;
 }
 
 // ── Configure notification behavior ─────────────────────────────────────────
@@ -39,22 +41,62 @@ export async function checkAllPermissions(): Promise<PermissionsState> {
     Notifications.getPermissionsAsync(),
   ]);
 
+  let microphone: PermissionStatus = 'undetermined';
+  try {
+    const micResult = await Audio.getPermissionsAsync();
+    microphone = mapStatus(micResult.status);
+  } catch {
+    microphone = 'undetermined';
+  }
+
   return {
-    microphone: 'undetermined', // Checked by expo-av when first recording starts
+    microphone,
     contacts: mapStatus(contactsResult.status),
     notifications: mapStatus(notifResult.status),
+    phone: Platform.OS === 'android' ? await checkAndroidPhonePermission() : 'undetermined',
   };
 }
 
 // ── Request all permissions in sequence ─────────────────────────────────────
+export async function requestAndroidPhonePermissions(): Promise<PermissionStatus> {
+  if (Platform.OS !== 'android') return 'undetermined';
+  try {
+    const wanted = [
+      PermissionsAndroid.PERMISSIONS.CALL_PHONE,
+      PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+      PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
+      PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
+      PermissionsAndroid.PERMISSIONS.ANSWER_PHONE_CALLS,
+      PermissionsAndroid.PERMISSIONS.READ_PHONE_NUMBERS,
+    ].filter(Boolean);
+    const granted = await PermissionsAndroid.requestMultiple(wanted);
+    const values = Object.values(granted);
+    if (values.every(v => v === PermissionsAndroid.RESULTS.GRANTED)) return 'granted';
+    if (values.some(v => v === PermissionsAndroid.RESULTS.GRANTED)) return 'limited';
+    return 'denied';
+  } catch (e) {
+    console.warn('Android phone permission error:', e);
+    return 'denied';
+  }
+}
+
+async function checkAndroidPhonePermission(): Promise<PermissionStatus> {
+  try {
+    const ok = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CALL_PHONE);
+    return ok ? 'granted' : 'denied';
+  } catch {
+    return 'undetermined';
+  }
+}
+
 export async function requestAllPermissions(): Promise<PermissionsState> {
   const results: PermissionsState = {
     microphone: 'undetermined',
     contacts: 'undetermined',
     notifications: 'undetermined',
+    phone: 'undetermined',
   };
 
-  // Contacts
   try {
     const { status } = await Contacts.requestPermissionsAsync();
     results.contacts = mapStatus(status);
@@ -62,6 +104,16 @@ export async function requestAllPermissions(): Promise<PermissionsState> {
     console.warn('Contacts permission error:', e);
     results.contacts = 'denied';
   }
+
+  try {
+    const { status } = await Audio.requestPermissionsAsync();
+    results.microphone = mapStatus(status);
+  } catch (e) {
+    console.warn('Microphone permission error:', e);
+    results.microphone = 'denied';
+  }
+
+  results.phone = await requestAndroidPhonePermissions();
 
   // Notifications
   try {

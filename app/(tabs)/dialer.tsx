@@ -25,14 +25,15 @@ import {
   ensureContactsPermission, getFavoritesSync,
 } from '../../services/contactsService';
 import { placeRealCall } from '../../services/phoneCall';
+import { requestAllPermissions } from '../../services/permissionsService';
 import * as Speech from 'expo-speech';
-
-// Alias sync lookup
-const findContactByNumber = findContactByNumberSync;
 import { useVoiceCommand } from '../../hooks/useVoiceCommand';
 import { parseVoiceCommand } from '../../services/voiceCommandService';
 import { aiDialerService, DialerResult } from '../../services/aiDialerService';
 import { callRecordsService } from '../../services/callRecordsService';
+import { ContactsBook } from '../../components/ContactsBook';
+
+const findContactByNumber = findContactByNumberSync;
 
 type Tab = 'voice' | 'pad' | 'agent' | 'contacts';
 
@@ -647,92 +648,6 @@ function AIAgentTab() {
   );
 }
 
-// ─── CONTACTS TAB ─────────────────────────────────────────────────────────
-function ContactsTab({
-  onContact,
-  contacts,
-  permission,
-  onAskPermission,
-}: {
-  onContact: (c: Contact) => void;
-  contacts: Contact[];
-  permission: 'unknown' | 'granted' | 'denied';
-  onAskPermission: () => void;
-}) {
-  const [search, setSearch] = useState('');
-  const q = search.toLowerCase().trim();
-  const results = !q
-    ? contacts
-    : contacts.filter(c =>
-        c.name.toLowerCase().includes(q) ||
-        c.number.replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
-        (c.org?.toLowerCase().includes(q) ?? false),
-      );
-
-  const groups = results.reduce<Record<string, Contact[]>>((acc, c) => {
-    const key = search ? 'Results' : c.name[0].toUpperCase();
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(c);
-    return acc;
-  }, {});
-  const sections = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-
-  return (
-    <View style={{ flex: 1 }}>
-      <View style={styles.contactSearch}>
-        <MaterialIcons name="search" size={20} color={Colors.textMuted} />
-        <TextInput
-          style={styles.contactSearchInput}
-          placeholder="Search contacts..."
-          placeholderTextColor={Colors.textMuted}
-          value={search}
-          onChangeText={setSearch}
-        />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => setSearch('')}>
-            <MaterialIcons name="close" size={18} color={Colors.textMuted} />
-          </TouchableOpacity>
-        )}
-      </View>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-        {sections.map(([letter, contacts]) => (
-          <View key={letter}>
-            <Text style={styles.sectionLetter}>{letter}</Text>
-            {contacts.map(c => (
-              <TouchableOpacity key={c.id} style={styles.contactRow} onPress={() => onContact(c)} activeOpacity={0.8}>
-                <ContactAvatar contact={c} size={46} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.contactName}>{c.name}</Text>
-                  <Text style={styles.contactNum}>{c.number}</Text>
-                  {c.org ? <Text style={styles.contactOrg}>{c.org}</Text> : null}
-                </View>
-                <TouchableOpacity style={styles.quickCallBtn} onPress={() => onContact(c)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <MaterialIcons name="phone" size={18} color={Colors.primary} />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ))}
-        {permission !== 'granted' && (
-          <View style={styles.emptyContacts}>
-            <MaterialIcons name="contacts" size={48} color={Colors.primary} />
-            <Text style={styles.emptyText}>Allow Contacts to browse this phone</Text>
-            <TouchableOpacity style={styles.permBtn} onPress={onAskPermission} activeOpacity={0.85}>
-              <Text style={styles.permBtnText}>Grant access</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        {permission === 'granted' && results.length === 0 && (
-          <View style={styles.emptyContacts}>
-            <MaterialIcons name="person-search" size={48} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>No contacts with phone numbers</Text>
-          </View>
-        )}
-      </ScrollView>
-    </View>
-  );
-}
-
 // ─── CONFIRM CALL MODAL ────────────────────────────────────────────────────
 function ConfirmCallModal({ contact, number, onConfirm, onCancel }: {
   contact?: Contact | null; number?: string; onConfirm: () => void; onCancel: () => void;
@@ -791,12 +706,16 @@ export default function DialerScreen() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [deviceContacts, setDeviceContacts] = useState<Contact[]>([]);
   const [contactPerm, setContactPerm] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+  const [loadingContacts, setLoadingContacts] = useState(true);
 
   const loadContacts = useCallback(async () => {
+    setLoadingContacts(true);
+    await requestAllPermissions();
     const ok = await ensureContactsPermission();
     setContactPerm(ok ? 'granted' : 'denied');
     if (ok) setDeviceContacts(await getAllContacts());
     else setDeviceContacts([]);
+    setLoadingContacts(false);
   }, []);
 
   useEffect(() => { loadContacts(); }, [loadContacts]);
@@ -895,10 +814,11 @@ export default function DialerScreen() {
         )}
         {tab === 'contacts' && (
           <View style={{ flex: 1, paddingHorizontal: Spacing.md }}>
-            <ContactsTab
+            <ContactsBook
               onContact={handleContact}
               contacts={deviceContacts}
               permission={contactPerm}
+              loading={loadingContacts}
               onAskPermission={loadContacts}
             />
           </View>
@@ -1148,37 +1068,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24, paddingVertical: 12, borderWidth: 1, borderColor: Colors.border,
   },
   retryBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.text },
-
-  // ── CONTACTS ──
-  contactSearch: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    backgroundColor: Colors.bgCard, borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm + 4,
-    borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.md,
-  },
-  contactSearchInput: { flex: 1, fontSize: FontSize.md, color: Colors.text, includeFontPadding: false },
-  sectionLetter: {
-    fontSize: FontSize.xs, fontWeight: FontWeight.extrabold, color: Colors.textMuted,
-    paddingHorizontal: 4, paddingVertical: 6, letterSpacing: 1,
-  },
-  contactRow: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    paddingVertical: Spacing.sm + 2, borderBottomWidth: 1, borderBottomColor: Colors.borderSubtle,
-  },
-  contactName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
-  contactNum: { fontSize: FontSize.xs, color: Colors.textSecondary },
-  contactOrg: { fontSize: FontSize.xs, color: Colors.textMuted },
-  quickCallBtn: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primaryGlow,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border,
-  },
-  emptyContacts: { alignItems: 'center', paddingTop: 48, gap: Spacing.md },
-  permBtn: {
-    marginTop: 8, backgroundColor: Colors.primary, borderRadius: Radius.md,
-    paddingHorizontal: 18, paddingVertical: 10,
-  },
-  permBtnText: { color: Colors.bg, fontWeight: FontWeight.bold, fontSize: FontSize.sm },
-  emptyText: { fontSize: FontSize.md, color: Colors.textMuted },
 
   // ── CONFIRM MODAL ──
   modalOverlay: {
