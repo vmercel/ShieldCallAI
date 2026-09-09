@@ -25,6 +25,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useGhostMode } from '../hooks/useGhostMode';
 import { useLiveTranscription } from '../hooks/useLiveTranscription';
 import { SentinelEngine } from '../services/sentinelEngine';
+import { callRecordsService } from '../services/callRecordsService';
 
 function formatDur(s: number) {
   return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
@@ -227,7 +228,33 @@ export default function GhostModeScreen() {
 
   const handleEnd = async () => {
     transcription.stop();
-    await ghost.endSession();
+    const session = await ghost.endSession();
+    const transcript = (session.messages || []).map(m => ({
+      speaker: m.role === 'ai' ? 'ai' : 'caller',
+      text: m.text,
+    }));
+    await callRecordsService.insert({
+      caller_name: params.callerName || callerLabel,
+      caller_number: params.callerNumber || '',
+      direction: 'inbound',
+      started_at: new Date(Date.now() - ghost.duration * 1000).toISOString(),
+      ended_at: new Date().toISOString(),
+      duration_seconds: ghost.duration,
+      threat_level: ghost.threatLevel,
+      threat_score: ghost.threatScore,
+      scam_type: ghost.scamType || undefined,
+      summary: ghost.factChecks[0] || `${personaName} answered this call in Ghost Mode.`,
+      ai_notes: ghost.intelligence.callerClaimedIdentity
+        ? `Caller claimed: ${ghost.intelligence.callerClaimedIdentity}`
+        : undefined,
+      tags: ['ghost'],
+      ghost_handled: true,
+      transcript,
+      flags: ghost.threatFlags || [],
+      fact_checks: ghost.factChecks || [],
+      is_blocked: false,
+      reported_to_ftc: false,
+    }).catch(() => {});
     router.back();
   };
 

@@ -32,9 +32,14 @@ export const blockedNumbersService = {
   },
 
   async block(phoneNumber: string, reason?: string): Promise<{ error: string | null }> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: 'Sign in to block numbers across devices' };
     const { error } = await supabase
       .from('blocked_numbers')
-      .upsert({ phone_number: phoneNumber, blocked_reason: reason || null }, { onConflict: 'user_id,phone_number' });
+      .upsert(
+        { user_id: user.id, phone_number: phoneNumber, blocked_reason: reason || null },
+        { onConflict: 'user_id,phone_number' },
+      );
 
     if (error) return { error: error.message };
     return { error: null };

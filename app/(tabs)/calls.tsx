@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../constants/theme';
 import { CallRecord } from '../../services/callRecordsService';
 import { useCallRecords } from '../../hooks/useCallRecords';
+import { useAuth } from '../../contexts/AuthContext';
 
 type Filter = 'all' | 'danger' | 'warning' | 'safe';
 type Direction = 'all' | 'inbound' | 'outbound';
@@ -42,6 +43,7 @@ export default function CallsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { calls, loading, error, networkStatus, refresh } = useCallRecords();
+  const { isAuthenticated } = useAuth();
 
   const [filter, setFilter] = useState<Filter>('all');
   const [direction, setDirection] = useState<Direction>('all');
@@ -216,9 +218,20 @@ export default function CallsScreen() {
               <Text style={styles.emptyText}>No calls yet</Text>
               <Text style={styles.emptySubText}>
                 {calls.length === 0
-                  ? 'Calls analyzed by SENTINEL™ will appear here'
+                  ? (isAuthenticated
+                    ? 'Place or answer a call from Dialer. Analyzed calls show up here.'
+                    : 'Place a call from Dialer. Sign in to sync history across devices.')
                   : 'No calls match your filter'}
               </Text>
+              {calls.length === 0 && !isAuthenticated ? (
+                <TouchableOpacity
+                  style={styles.retryBtn}
+                  onPress={() => router.push('/onboarding')}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.retryBtnText}>Sign in</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           }
         />
