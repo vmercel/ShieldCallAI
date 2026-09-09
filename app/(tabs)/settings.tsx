@@ -9,9 +9,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { checkAllPermissions, PermissionsState } from '../../services/permissionsService';
+import { checkAllPermissions, PermissionsState, requestAllPermissions, requestContactsPermission } from '../../services/permissionsService';
 import { supabase } from '../../services/supabaseClient';
 import { sidecarHealth } from '../../services/shieldcallSidecar';
+import { promptDefaultDialer, defaultDialerHelp } from '../../services/defaultDialer';
 
 function SettingRow({ icon, label, sub, iconColor, children }: {
   icon: string; label: string; sub?: string; iconColor?: string; children?: React.ReactNode;
@@ -143,6 +144,7 @@ export default function SettingsScreen() {
     microphone: 'undetermined',
     contacts: 'undetermined',
     notifications: 'undetermined',
+    phone: 'undetermined',
   });
   const [coreStatus, setCoreStatus] = useState('Checking shieldcall-core…');
 
@@ -292,6 +294,57 @@ export default function SettingsScreen() {
               <Text style={styles.editProfileBtnText}>Sign in</Text>
             </TouchableOpacity>
           )}
+        </View>
+
+        <Text style={styles.sectionTitle}>Phone app</Text>
+        <View style={styles.section}>
+          <TouchableOpacity onPress={() => promptDefaultDialer()} activeOpacity={0.85}>
+            <SettingRow
+              icon="phone-in-talk"
+              label="Use as default Phone app"
+              sub={defaultDialerHelp()}
+              iconColor={Colors.primary}
+            >
+              <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
+            </SettingRow>
+          </TouchableOpacity>
+          <View style={styles.divider} />
+          <TouchableOpacity
+            onPress={async () => {
+              const status = await requestContactsPermission();
+              if (status !== 'granted') await Linking.openSettings();
+              checkAllPermissions().then(setPermissions);
+            }}
+            activeOpacity={0.85}
+          >
+            <SettingRow
+              icon="contacts"
+              label="Contacts access"
+              sub="Needed to search this phone and say Call, then a name"
+              iconColor={permissions.contacts === 'granted' ? Colors.safe : Colors.primary}
+            >
+              <Text style={[styles.permBadgeText, { color: permissions.contacts === 'granted' ? Colors.safe : Colors.warning }]}>
+                {permissions.contacts === 'granted' ? 'Granted' : 'Tap to allow'}
+              </Text>
+            </SettingRow>
+          </TouchableOpacity>
+          <View style={styles.divider} />
+          <TouchableOpacity
+            onPress={async () => {
+              await requestAllPermissions();
+              checkAllPermissions().then(setPermissions);
+            }}
+            activeOpacity={0.85}
+          >
+            <SettingRow
+              icon="security"
+              label="Grant all Phone permissions"
+              sub="Contacts, microphone, notifications, and on Android the Phone role"
+              iconColor={Colors.primary}
+            >
+              <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
+            </SettingRow>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.sectionTitle}>Live Protect</Text>

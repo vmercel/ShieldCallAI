@@ -32,7 +32,8 @@
       },
       "infoPlist": {
         "NSMicrophoneUsageDescription": "ShieldCall uses the microphone to analyze this phone's conversation while a call is ongoing so it can warn you about scams.",
-        "NSContactsUsageDescription": "ShieldCall may access contacts to label callers on this device. Contacts are not required for Live Protect.",
+        "NSContactsUsageDescription": "ShieldCall reads your contacts so you can search and call people from this phone, like a Phone app.",
+        "LSApplicationQueriesSchemes": ["tel", "telprompt"],
         "NSCameraUsageDescription": "ShieldCall does not use the camera in v1.",
         "NSSpeechRecognitionUsageDescription": "ShieldCall uses the operating system's speech recognition to transcribe this phone's live conversation so it can score scam language. Audio may be sent to Apple or Google as your OS dictates.",
         "NSLocalNetworkUsageDescription": "ShieldCall may connect to an optional detector sidecar on your local network. The app works if that sidecar is not running.",
@@ -57,11 +58,35 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.shieldcallai.app",
+      "intentFilters": [
+        {
+          "action": "android.intent.action.DIAL",
+          "category": ["android.intent.category.DEFAULT"]
+        },
+        {
+          "action": "android.intent.action.DIAL",
+          "category": ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"],
+          "data": [{ "scheme": "tel" }]
+        },
+        {
+          "action": "android.intent.action.VIEW",
+          "category": ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"],
+          "data": [{ "scheme": "tel" }]
+        },
+        {
+          "action": "android.intent.action.CALL",
+          "category": ["android.intent.category.DEFAULT"],
+          "data": [{ "scheme": "tel" }]
+        }
+      ],
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_CONTACTS",
         "android.permission.READ_PHONE_STATE",
         "android.permission.CALL_PHONE",
+        "android.permission.READ_CALL_LOG",
+        "android.permission.READ_PHONE_NUMBERS",
+        "android.permission.PROCESS_OUTGOING_CALLS",
         "android.permission.ANSWER_PHONE_CALLS",
         "android.permission.MANAGE_OWN_CALLS",
         "android.permission.BIND_TELECOM_CONNECTION_SERVICE",
@@ -97,7 +122,7 @@
       [
         "expo-contacts",
         {
-          "contactsPermission": "ShieldCall may access contacts to label callers on this device. Contacts are not required for Live Protect."
+          "contactsPermission": "ShieldCall reads your contacts so you can search and call people from this phone, like a Phone app."
         }
       ],
       [
