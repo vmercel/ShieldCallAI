@@ -138,6 +138,8 @@
     },
     "plugins": [
       "expo-router",
+      "expo-dev-client",
+      "./plugins/withCallKeep.js",
       [
         "expo-splash-screen",
         {
