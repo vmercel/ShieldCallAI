@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { ThreatLevel } from '../constants/mockData';
-import { ThreatService, ThreatWindow } from '../services/threatService';
+import { ThreatService } from '../services/threatService';
+import { ThreatWindow } from '../services/sentinelEngine';
 
 export interface LiveCallState {
   isActive: boolean;

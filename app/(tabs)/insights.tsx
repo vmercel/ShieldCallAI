@@ -36,7 +36,7 @@ export default function InsightsScreen() {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `CALLSHIELD SENTINEL™ protected me from ${stats.scamsBlocked} scam attempts this month — estimated $${stats.estimatedSavings.toLocaleString()} in losses prevented. callshield.ai`,
+        message: `ShieldCall AI SENTINEL™ protected me from ${stats.scamsBlocked} scam attempts this month — estimated $${stats.estimatedSavings.toLocaleString()} in losses prevented. shieldcallai.com`,
       });
     } catch {}
   };
@@ -134,7 +134,7 @@ export default function InsightsScreen() {
         <View style={styles.emptyCard}>
           <MaterialIcons name="phone-missed" size={32} color={Colors.textMuted} />
           <Text style={styles.emptyText}>No calls analyzed yet</Text>
-          <Text style={styles.emptySubText}>Make or receive calls through CALLSHIELD to see your breakdown</Text>
+          <Text style={styles.emptySubText}>Make or receive calls through ShieldCall AI to see your breakdown</Text>
         </View>
       ) : (
         <View style={styles.breakdownCard}>
@@ -257,7 +257,7 @@ export default function InsightsScreen() {
           <Text style={styles.communityTitle}>Community Network Effect</Text>
           <Text style={styles.communityText}>
             Your SENTINEL™ threat detections are anonymously contributed to{' '}
-            <Text style={{ color: Colors.primary, fontWeight: FontWeight.bold }}>the CALLSHIELD network</Text>
+            <Text style={{ color: Colors.primary, fontWeight: FontWeight.bold }}>the ShieldCall AI network</Text>
             , neutralizing scam campaigns before they reach others.
           </Text>
         </View>

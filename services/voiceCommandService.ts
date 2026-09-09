@@ -18,6 +18,10 @@
  */
 
 import { Platform } from 'react-native';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
+import { supabase } from './supabaseClient';
+import { startExclusiveRecording, stopExclusiveRecording } from './micRecorder';
 
 export type VoiceCommandAction = 'call' | 'text' | 'redial' | 'callBack' | 'ghost' | 'cancel' | 'unknown';
 
@@ -89,7 +93,7 @@ export function parseVoiceCommand(text: string): ParsedCommand {
     return { action: 'ghost', rawText: raw, confidence: 0.95 };
   }
   if (CALL_TRIGGERS.test(lower)) {
-    const remainder = raw.replace(CALL_TRIGGERS, '').trim();
+    const remainder = raw.replace(CALL_TRIGGERS, '').replace(/^(my|the|a)\s+/i, '').trim();
     const isNumber = NUMBER_PATTERN.test(remainder) && !/[a-zA-Z]{3,}/.test(remainder);
     return {
       action: 'call',
@@ -110,7 +114,117 @@ export function parseVoiceCommand(text: string): ParsedCommand {
     };
   }
 
+  // Bare name or number: "Mom", "Dr Nguyen", a phone number
+  const isNumber = NUMBER_PATTERN.test(raw) && !/[a-zA-Z]{3,}/.test(raw);
+  if (isNumber) {
+    return {
+      action: 'call',
+      target: raw.replace(/\D/g, ''),
+      targetType: 'number',
+      rawText: raw,
+      confidence: 0.8,
+    };
+  }
+  if (/[a-zA-Z]/.test(raw) && raw.split(/\s+/).length <= 6) {
+    return {
+      action: 'call',
+      target: raw.replace(/^(my|the|a)\s+/i, '').trim(),
+      targetType: 'name',
+      rawText: raw,
+      confidence: 0.72,
+    };
+  }
+
   return { action: 'unknown', rawText: raw, confidence: 0.3 };
+}
+
+function dbToAmp(db: number): number {
+  return (Math.max(-160, Math.min(0, db)) + 160) / 160;
+}
+
+/**
+ * Native one-shot listen: record until a pause after speech (or 4.5s),
+ * then transcribe. Used so "Call Mom" works on the same iPhone.
+ */
+export async function captureSpokenUtterance(): Promise<{ transcript: string; error?: string }> {
+  if (Platform.OS === 'web') {
+    return { transcript: '', error: 'use-web-speech' };
+  }
+
+  let recording: Audio.Recording | null = null;
+  try {
+    const perm = await Audio.requestPermissionsAsync();
+    if (perm.status !== 'granted') {
+      return { transcript: '', error: 'Microphone permission is required to dial by voice' };
+    }
+
+    recording = await startExclusiveRecording();
+
+    const started = Date.now();
+    let heardSpeech = false;
+    let silentMs = 0;
+
+    await new Promise<void>(resolve => {
+      const poll = setInterval(async () => {
+        if (!recording) {
+          clearInterval(poll);
+          resolve();
+          return;
+        }
+        try {
+          const status = await recording.getStatusAsync();
+          if (!status.isRecording) {
+            clearInterval(poll);
+            resolve();
+            return;
+          }
+          const amp = dbToAmp((status as any).metering ?? -160);
+          if (amp > 0.14) {
+            heardSpeech = true;
+            silentMs = 0;
+          } else if (heardSpeech) {
+            silentMs += 140;
+          }
+          const elapsed = Date.now() - started;
+          if ((heardSpeech && silentMs >= 900) || elapsed >= 4500) {
+            clearInterval(poll);
+            resolve();
+          }
+        } catch {
+          clearInterval(poll);
+          resolve();
+        }
+      }, 140);
+    });
+
+    const uri = await stopExclusiveRecording(recording);
+    recording = null;
+
+    if (!uri) return { transcript: '', error: "I didn't catch that" };
+
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+
+    if (!base64) return { transcript: '', error: "I didn't catch that" };
+
+    const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+      body: { audioBase64: base64, mimeType: 'audio/m4a', language: 'en' },
+    });
+
+    if (error || !data?.transcript) {
+      return { transcript: '', error: "I didn't catch a name. Say Call, then the contact." };
+    }
+
+    const transcript = String(data.transcript).trim();
+    if (!transcript) return { transcript: '', error: "I didn't catch that" };
+    return { transcript };
+  } catch (e) {
+    try { await stopExclusiveRecording(recording); } catch {}
+    console.warn('captureSpokenUtterance', e);
+    return { transcript: '', error: 'Could not hear you. Tap the mic and try again.' };
+  }
 }
 
 // ─── VOICE RECOGNITION SERVICE ────────────────────────────────────────────────

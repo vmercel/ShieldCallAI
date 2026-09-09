@@ -122,7 +122,7 @@ function classifyIntent(text: string): CallerIntent {
 
 // ─── RESPONSE LIBRARY ────────────────────────────────────────────────────────
 
-const RESPONSES: Record<ConversationState, Record<CallerIntent | 'default', string[]>> = {
+const RESPONSES: Record<ConversationState, Partial<Record<CallerIntent | 'default', string[]>>> = {
   greeting: {
     default: [
       "Hello, this is {persona}, a communications assistant calling on behalf of {name}. How may I direct your call?",
@@ -134,7 +134,6 @@ const RESPONSES: Record<ConversationState, Record<CallerIntent | 'default', stri
     information_request: [
       "Hello, this is {persona}. I handle communications for {name}. May I ask who is calling and the purpose of your call?",
     ],
-    default2: [],
   },
   purpose_inquiry: {
     default: [
@@ -150,7 +149,6 @@ const RESPONSES: Record<ConversationState, Record<CallerIntent | 'default', stri
     payment_request: [
       "Interesting. Before we discuss any financial matters, I will need to verify your organization's official contact information. Could you provide your direct callback number and supervisor name?",
     ],
-    default2: [],
   },
   identity_verification: {
     default: [
@@ -166,7 +164,6 @@ const RESPONSES: Record<ConversationState, Record<CallerIntent | 'default', stri
     payment_request: [
       "I want to be sure we handle this payment correctly. Could you confirm the official mailing address where a check could be sent instead? We do not process phone payments.",
     ],
-    default2: [],
   },
   stalling: {
     default: [
@@ -177,7 +174,6 @@ const RESPONSES: Record<ConversationState, Record<CallerIntent | 'default', stri
     urgency_push: [
       "I am moving as quickly as I can. The process still requires verification. Could you hold for just two minutes?",
     ],
-    default2: [],
   },
   escalation_detected: {
     default: [
@@ -193,7 +189,6 @@ const RESPONSES: Record<ConversationState, Record<CallerIntent | 'default', stri
     secrecy_demand: [
       "I want to be transparent: I am required to notify {name} of all communications on their behalf. I cannot agree to keep information from them.",
     ],
-    default2: [],
   },
   expose_mode: {
     default: [
@@ -206,7 +201,6 @@ const RESPONSES: Record<ConversationState, Record<CallerIntent | 'default', stri
       "I think I may have misunderstood. Could you start from the beginning and explain the issue one more time?",
       "And if someone wanted to verify this call was legitimate, what official number would they call? The number you are calling from just shows up as unknown.",
     ],
-    default2: [],
     payment_request: [
       "Gift cards, you said? Which specific gift cards are acceptable? Is there a minimum denomination?",
     ],
@@ -225,7 +219,6 @@ const RESPONSES: Record<ConversationState, Record<CallerIntent | 'default', stri
     farewell: [
       "Thank you. This call has been recorded and documented. Goodbye.",
     ],
-    default2: [],
   },
 };
 
@@ -352,7 +345,7 @@ export class GhostAIResponder {
    * Generate the opening greeting automatically
    */
   async greet(onAIMessage: (msg: GhostMessage) => void): Promise<GhostMessage> {
-    const text = getResponse('greeting', 'default', this.personaName, this.userName);
+    const text = getResponse('greeting', 'greeting', this.personaName, this.userName);
     const msg: GhostMessage = {
       id: `ai-${Date.now()}`,
       role: 'ai',
@@ -410,7 +403,7 @@ export class GhostAIResponder {
         rate: this.speechRate,
         pitch: this.speechPitch,
         onDone: resolve,
-        onError: resolve,
+        onError: () => resolve(),
       });
     });
   }

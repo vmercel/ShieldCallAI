@@ -1,14 +1,6 @@
 /**
- * CALLSHIELD Onboarding + Auth Screen
- *
- * Flow:
- * 1. Three feature slides (swipeable + button nav)
- * 2. Sign Up screen (name, email, phone, password)
- * 3. OTP Verification screen (6-digit code sent to email)
- * 4. Sign In screen (for returning users)
- * 5. Forgot Password flow
- * 6. AI Persona selection
- * → Authenticated users land on /(tabs)
+ * ShieldCall onboarding.
+ * Guest path: slides → consent → permissions → app. Account is optional.
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -23,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
+import { LAB_OTP } from '../services/labAuth';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../constants/theme';
 import { supabase } from '../services/supabaseClient';
 import { PermissionsScreen } from '../components/PermissionsScreen';
@@ -33,21 +26,21 @@ const PERSONAS = ['Alex', 'Jordan', 'Morgan', 'Casey', 'Riley'];
 const SLIDES = [
   {
     image: require('../assets/images/onboard_1.png'),
-    title: 'Your AI\nBodyguard',
-    subtitle: 'Real-time scam detection and threat analysis on every call — before you even answer.',
+    title: 'Live Protect\non speaker',
+    subtitle: 'Put the other phone on speaker. This phone listens on its microphone, scores scam language, and warns on screen.',
     icon: 'shield',
   },
   {
     image: require('../assets/images/onboard_2.png'),
-    title: 'Ghost Mode\nActivated',
-    subtitle: 'Your AI persona answers suspicious calls while you listen silently, fully protected.',
-    icon: 'hearing',
+    title: 'Warns. Never\nhangs up.',
+    subtitle: 'ShieldCall does not join the carrier call and never hangs up for you. You stay in control of the conversation.',
+    icon: 'volume-up',
   },
   {
     image: require('../assets/images/onboard_3.png'),
-    title: 'AI Dials\nFor You',
-    subtitle: 'Prescriptions, appointments, complaints — your AI agent handles it. You review results.',
-    icon: 'support-agent',
+    title: 'All-party\nconsent',
+    subtitle: 'Where the law requires every party to consent to analysis, you must have that consent before you start Live Protect.',
+    icon: 'gavel',
   },
 ];
 
@@ -260,6 +253,11 @@ function OtpScreen({
           <MaterialIcons name="info-outline" size={14} color={Colors.primary} />
           <Text style={styles.privacyText}>Check your spam folder if you don not see the email. The code expires in 10 minutes.</Text>
         </View>
+        {__DEV__ ? (
+          <Text style={[styles.privacyText, { textAlign: 'center', marginTop: 8 }]}>
+            Dev OTP (no email): {LAB_OTP}
+          </Text>
+        ) : null}
         <TouchableOpacity onPress={onBack} style={styles.switchBtn} activeOpacity={0.8}>
           <Text style={styles.switchText}>Wrong email? <Text style={styles.switchLink}>Go back</Text></Text>
         </TouchableOpacity>
@@ -291,7 +289,7 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
     }
     setLoading(true);
     const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: 'onspaceapp://reset-password',
+      redirectTo: 'shieldcallai://reset-password',
     });
     setLoading(false);
     if (err) {
@@ -356,7 +354,7 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
 }
 
 // ─── Sign Up Screen ───────────────────────────────────────────────────────────
-function SignUpScreen({ onSignIn, onSuccess }: { onSignIn: () => void; onSuccess: (email: string) => void }) {
+function SignUpScreen({ onSignIn, onSuccess, onSkip }: { onSignIn: () => void; onSuccess: (email: string) => void; onSkip: () => void }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -366,6 +364,7 @@ function SignUpScreen({ onSignIn, onSuccess }: { onSignIn: () => void; onSuccess
   const [fieldError, setFieldError] = useState('');
   const { signUp } = useAuth();
   const { AlertModal } = useWebAlert();
+  const router = useRouter();
 
   const handleSignUp = async () => {
     setFieldError('');
@@ -390,7 +389,7 @@ function SignUpScreen({ onSignIn, onSuccess }: { onSignIn: () => void; onSuccess
           <MaterialIcons name="shield" size={40} color={Colors.primary} />
         </View>
         <Text style={styles.authTitle}>Create Account</Text>
-        <Text style={styles.authSubtitle}>Join CALLSHIELD and activate your AI protection layer.</Text>
+        <Text style={styles.authSubtitle}>Optional. ShieldCall is free and works without an account.</Text>
 
         <View style={styles.form}>
           <AuthInput icon="person" placeholder="Full Name" value={fullName} onChangeText={setFullName} autoCapitalize="words" />
@@ -409,7 +408,7 @@ function SignUpScreen({ onSignIn, onSuccess }: { onSignIn: () => void; onSuccess
 
         <View style={styles.privacyBox}>
           <MaterialIcons name="lock" size={14} color={Colors.primary} />
-          <Text style={styles.privacyText}>All audio processing is on-device. Your call audio never leaves your phone.</Text>
+          <Text style={styles.privacyText}>ShieldCall analyzes the conversation on this phone while the call is ongoing and slides in a summary tile every chunk. An account is not required.</Text>
         </View>
 
         <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={handleSignUp} disabled={loading} activeOpacity={0.85}>
@@ -423,18 +422,27 @@ function SignUpScreen({ onSignIn, onSuccess }: { onSignIn: () => void; onSuccess
         <TouchableOpacity onPress={onSignIn} style={styles.switchBtn} activeOpacity={0.8}>
           <Text style={styles.switchText}>Already have an account? <Text style={styles.switchLink}>Sign In</Text></Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={onSkip} style={styles.switchBtn} activeOpacity={0.8}>
+          <Text style={styles.switchLink}>Continue without an account</Text>
+        </TouchableOpacity>
+        <Text style={styles.legalText}>
+          By creating an account you agree to our{' '}
+          <Text style={styles.legalLink} onPress={() => router.push('/terms' as any)}>Terms of Service</Text>
+          {' '}and{' '}
+          <Text style={styles.legalLink} onPress={() => router.push('/privacy' as any)}>Privacy Policy</Text>.
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 // ─── Sign In Screen ───────────────────────────────────────────────────────────
-function SignInScreen({ onSignUp, onSuccess, onForgotPassword }: { onSignUp: () => void; onSuccess: () => void; onForgotPassword: () => void }) {
+function SignInScreen({ onSignUp, onSuccess, onForgotPassword, onSkip }: { onSignUp: () => void; onSuccess: () => void; onForgotPassword: () => void; onSkip: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [fieldError, setFieldError] = useState('');
-  const { signIn } = useAuth();
+  const { signIn, signInLabTester } = useAuth();
 
   const handleSignIn = async () => {
     setFieldError('');
@@ -454,7 +462,7 @@ function SignInScreen({ onSignUp, onSuccess, onForgotPassword }: { onSignUp: () 
           <MaterialIcons name="shield" size={40} color={Colors.primary} />
         </View>
         <Text style={styles.authTitle}>Welcome Back</Text>
-        <Text style={styles.authSubtitle}>Sign in to reactivate your CALLSHIELD protection.</Text>
+        <Text style={styles.authSubtitle}>Sign in is optional. ShieldCall is free.</Text>
 
         <View style={styles.form}>
           <AuthInput icon="email" placeholder="Email Address" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
@@ -482,8 +490,26 @@ function SignInScreen({ onSignUp, onSuccess, onForgotPassword }: { onSignUp: () 
           )}
         </TouchableOpacity>
         <TouchableOpacity onPress={onSignUp} style={styles.switchBtn} activeOpacity={0.8}>
-          <Text style={styles.switchText}>New to CALLSHIELD? <Text style={styles.switchLink}>Create Account</Text></Text>
+          <Text style={styles.switchText}>New to ShieldCall? <Text style={styles.switchLink}>Create Account</Text></Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={onSkip} style={styles.switchBtn} activeOpacity={0.8}>
+          <Text style={styles.switchLink}>Continue without an account</Text>
+        </TouchableOpacity>
+        {__DEV__ ? (
+          <TouchableOpacity
+            style={[styles.switchBtn, { marginTop: 8 }]}
+            onPress={async () => {
+              setLoading(true);
+              const { error } = await signInLabTester();
+              setLoading(false);
+              if (error) setFieldError(error);
+              else onSuccess();
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.switchLink}>Continue as lab tester (no email)</Text>
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -518,18 +544,18 @@ function PersonaScreen({ onActivate }: { onActivate: (name: string) => void }) {
       </View>
       <View style={styles.privacyBox}>
         <MaterialIcons name="lock" size={14} color={Colors.primary} />
-        <Text style={styles.privacyText}>All audio processing happens on-device. No audio is ever transmitted or shared.</Text>
+        <Text style={styles.privacyText}>You can skip this. Live Protect works without an AI persona or a paid plan.</Text>
       </View>
       <TouchableOpacity style={styles.primaryBtn} onPress={() => onActivate(selected)} activeOpacity={0.85}>
         <MaterialIcons name="shield" size={18} color={Colors.textInverse} />
-        <Text style={styles.primaryBtnText}>Activate CALLSHIELD</Text>
+        <Text style={styles.primaryBtnText}>Continue</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
 // ─── Main Onboarding ──────────────────────────────────────────────────────────
-type Screen = 'slides' | 'signup' | 'otp' | 'signin' | 'forgotPassword' | 'persona' | 'permissions';
+type Screen = 'slides' | 'signup' | 'otp' | 'signin' | 'forgotPassword' | 'persona' | 'consent' | 'permissions';
 
 export default function OnboardingScreen() {
   const [screen, setScreen] = useState<Screen>('slides');
@@ -538,8 +564,8 @@ export default function OnboardingScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { setOnboarded, setPersonaName, setGhostMode } = useApp();
-  const { updateProfile } = useAuth();
+  const { setOnboarded, setPersonaName } = useApp();
+  const { updateProfile, signInLabTester } = useAuth();
 
   const goSlide = (idx: number) => {
     setSlideIndex(idx);
@@ -548,7 +574,7 @@ export default function OnboardingScreen() {
 
   const goNext = () => {
     if (slideIndex < SLIDES.length - 1) { goSlide(slideIndex + 1); }
-    else { setScreen('signup'); }
+    else { setScreen('consent'); }
   };
 
   const handleSignUpSuccess = (email: string) => {
@@ -556,17 +582,15 @@ export default function OnboardingScreen() {
     setScreen('otp');
   };
 
-  const handleOtpSuccess = () => setScreen('persona');
-  const handleSignInSuccess = () => setScreen('persona');
+  const handleOtpSuccess = () => setScreen('consent');
+  const handleSignInSuccess = () => setScreen('consent');
 
   const handleActivate = async (personaName: string) => {
     await Promise.all([
       setPersonaName(personaName),
-      setGhostMode(true),
-      updateProfile({ persona_name: personaName, ghost_mode_enabled: true }),
+      updateProfile({ persona_name: personaName }),
     ]);
-    // Go to permissions screen before launching main app
-    setScreen('permissions');
+    setScreen('consent');
   };
 
   const handlePermissionsComplete = async () => {
@@ -580,7 +604,7 @@ export default function OnboardingScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => setScreen('slides')}>
           <MaterialIcons name="arrow-back" size={22} color={Colors.textSecondary} />
         </TouchableOpacity>
-        <SignUpScreen onSignIn={() => setScreen('signin')} onSuccess={handleSignUpSuccess} />
+        <SignUpScreen onSignIn={() => setScreen('signin')} onSuccess={handleSignUpSuccess} onSkip={() => setScreen('consent')} />
       </View>
     );
   }
@@ -599,13 +623,14 @@ export default function OnboardingScreen() {
   if (screen === 'signin') {
     return (
       <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => setScreen('signup')}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => setScreen('slides')}>
           <MaterialIcons name="arrow-back" size={22} color={Colors.textSecondary} />
         </TouchableOpacity>
         <SignInScreen
           onSignUp={() => setScreen('signup')}
           onSuccess={handleSignInSuccess}
           onForgotPassword={() => setScreen('forgotPassword')}
+          onSkip={() => setScreen('consent')}
         />
       </View>
     );
@@ -626,6 +651,57 @@ export default function OnboardingScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
         <PersonaScreen onActivate={handleActivate} />
+      </View>
+    );
+  }
+
+  if (screen === 'consent') {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, paddingHorizontal: Spacing.lg }]}>
+        <View style={{ flex: 1, justifyContent: 'center', gap: Spacing.lg }}>
+          <View style={{ alignItems: 'center', gap: Spacing.md }}>
+            <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.primaryGlow, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.borderStrong }}>
+              <MaterialIcons name="mic" size={36} color={Colors.primary} />
+            </View>
+            <Text style={{ fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.text, textAlign: 'center' }}>How Live Protect works</Text>
+            <Text style={{ fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 }}>
+              ShieldCall listens on this phone while a call is on speaker. Read this before you start.
+            </Text>
+          </View>
+
+          {[
+            { icon: 'volume-up', title: 'Speakerphone listen', body: 'Put the other phone on speaker. This phone uses its microphone to hear the conversation, scores scam language, and shows a warning on screen.' },
+            { icon: 'call-end', title: 'Recommend only', body: 'ShieldCall does not join the carrier call and never hangs up for you. You stay in control of the call.' },
+            { icon: 'gavel', title: 'All-party consent', body: 'Where the law requires every party to consent to analysis or recording, you must have that consent before starting Live Protect. You are responsible for following the laws where you and the other parties are located.' },
+            { icon: 'mic', title: 'Microphone', body: 'Live Protect needs the microphone on this phone. Speech recognition uses the operating system. Scoring can run on-device; an optional LAN sidecar is extra and not required.' },
+          ].map(item => (
+            <View key={item.title} style={{ flexDirection: 'row', gap: Spacing.sm, backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.md, borderWidth: 1, borderColor: Colors.border }}>
+              <MaterialIcons name={item.icon as any} size={20} color={Colors.primary} style={{ marginTop: 2 }} />
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={{ fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.text }}>{item.title}</Text>
+                <Text style={{ fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 18 }}>{item.body}</Text>
+              </View>
+            </View>
+          ))}
+
+          <TouchableOpacity
+            style={{ backgroundColor: Colors.primary, borderRadius: Radius.full, paddingVertical: 16, alignItems: 'center', marginTop: Spacing.sm }}
+            onPress={() => setScreen('permissions')}
+            activeOpacity={0.85}
+          >
+            <Text style={{ fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textInverse }}>I understand — continue</Text>
+          </TouchableOpacity>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: Spacing.md }}>
+            <TouchableOpacity onPress={() => router.push('/privacy' as any)} activeOpacity={0.8}>
+              <Text style={{ fontSize: FontSize.xs, color: Colors.primary, textDecorationLine: 'underline' }}>Privacy Policy</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: FontSize.xs, color: Colors.textMuted }}>·</Text>
+            <TouchableOpacity onPress={() => router.push('/terms' as any)} activeOpacity={0.8}>
+              <Text style={{ fontSize: FontSize.xs, color: Colors.primary, textDecorationLine: 'underline' }}>Terms of Service</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     );
   }
@@ -682,13 +758,33 @@ export default function OnboardingScreen() {
         </View>
         <TouchableOpacity style={styles.nextBtn} onPress={goNext} activeOpacity={0.85}>
           <Text style={styles.nextBtnText}>
-            {slideIndex < SLIDES.length - 1 ? 'Continue' : 'Get Protected'}
+            {slideIndex < SLIDES.length - 1 ? 'Continue' : 'Get started'}
           </Text>
           <MaterialIcons name="arrow-forward" size={20} color={Colors.textInverse} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setScreen('signin')} style={styles.alreadyBtn} activeOpacity={0.8}>
-          <Text style={styles.alreadyText}>Already have an account? <Text style={styles.alreadyLink}>Sign In</Text></Text>
+        <TouchableOpacity onPress={() => setScreen('consent')} style={styles.alreadyBtn} activeOpacity={0.8}>
+          <Text style={styles.alreadyLink}>Continue without an account</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={() => setScreen('signin')} style={styles.alreadyBtn} activeOpacity={0.8}>
+          <Text style={styles.alreadyText}>Have an account? <Text style={styles.alreadyLink}>Sign in</Text></Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setScreen('signup')} style={styles.alreadyBtn} activeOpacity={0.8}>
+          <Text style={styles.alreadyText}>Create an account <Text style={styles.alreadyLink}>(optional)</Text></Text>
+        </TouchableOpacity>
+        {__DEV__ ? (
+          <TouchableOpacity
+            onPress={async () => {
+              const { error } = await signInLabTester();
+              if (error) return;
+              await setOnboarded();
+              router.replace('/(tabs)');
+            }}
+            style={styles.alreadyBtn}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.alreadyLink}>Skip signup — lab tester</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );
@@ -764,6 +860,8 @@ const styles = StyleSheet.create({
   switchBtn: { alignItems: 'center', paddingVertical: 8 },
   switchText: { fontSize: FontSize.sm, color: Colors.textSecondary },
   switchLink: { color: Colors.primary, fontWeight: FontWeight.bold },
+  legalText: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', lineHeight: 18, paddingHorizontal: Spacing.md, marginTop: 4 },
+  legalLink: { color: Colors.primary, textDecorationLine: 'underline' as const },
   forgotBtn: { alignSelf: 'flex-end', paddingVertical: 4 },
   forgotText: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.semibold },
 

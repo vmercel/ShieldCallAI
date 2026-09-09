@@ -22,6 +22,7 @@ import { Platform } from 'react-native';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { supabase } from '../services/supabaseClient';
+import { enableMicSession, startExclusiveRecording, stopExclusiveRecording } from '../services/micRecorder';
 
 const CHUNK_DURATION_MS = 6000;   // 6-second recording windows
 const METERING_INTERVAL_MS = 120; // Amplitude poll rate
@@ -136,16 +137,10 @@ export function useNativeSTT(onSegment?: OnSegmentCallback) {
       clearInterval(meteringIntervalRef.current);
       meteringIntervalRef.current = null;
     }
-    if (!recordingRef.current) return null;
-    try {
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
-      return uri ?? null;
-    } catch {
-      recordingRef.current = null;
-      return null;
-    }
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    if (!rec) return null;
+    return stopExclusiveRecording(rec);
   }, []);
 
   const transcribeChunk = useCallback(async (uri: string) => {
@@ -199,25 +194,29 @@ export function useNativeSTT(onSegment?: OnSegmentCallback) {
   const startNewRecording = useCallback(async () => {
     if (!isActiveRef.current) return;
     try {
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync({
-        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        isMeteringEnabled: true,
-      });
-      await recording.startAsync();
+      await enableMicSession();
+      const recording = await startExclusiveRecording();
+      if (!isActiveRef.current) {
+        await stopExclusiveRecording(recording);
+        return;
+      }
       recordingRef.current = recording;
       startMeteringPoll(recording);
 
-      // Schedule chunk cutoff
       chunkTimerRef.current = setTimeout(async () => {
         if (!isActiveRef.current) return;
         const uri = await stopCurrentRecording();
         if (uri) transcribeChunk(uri);
-        startNewRecording(); // Immediately start next chunk
+        await new Promise(r => setTimeout(r, 150));
+        if (isActiveRef.current) startNewRecording();
       }, CHUNK_DURATION_MS);
     } catch (e) {
       console.warn('useNativeSTT recording start error:', e);
+      recordingRef.current = null;
       setState(prev => ({ ...prev, error: 'Microphone recording failed' }));
+      setTimeout(() => {
+        if (isActiveRef.current) startNewRecording();
+      }, 500);
     }
   }, [startMeteringPoll, stopCurrentRecording, transcribeChunk]);
 
@@ -238,10 +237,7 @@ export function useNativeSTT(onSegment?: OnSegmentCallback) {
     }));
 
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
+      await enableMicSession();
       await startNewRecording();
     } catch (e) {
       console.warn('useNativeSTT start error:', e);
@@ -254,13 +250,7 @@ export function useNativeSTT(onSegment?: OnSegmentCallback) {
     chunkTimerRef.current && clearTimeout(chunkTimerRef.current);
 
     const uri = await stopCurrentRecording();
-    // Transcribe final chunk if it has content
     if (uri) transcribeChunk(uri);
-
-    try {
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-    } catch {}
-
     setState(prev => ({ ...prev, isListening: false, isTranscribing: false }));
   }, [stopCurrentRecording, transcribeChunk]);
 

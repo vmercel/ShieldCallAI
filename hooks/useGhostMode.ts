@@ -10,6 +10,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { Platform } from 'react-native';
 import * as Speech from 'expo-speech';
 import { GhostMessage, GhostIntelligence } from '../services/ghostAIResponder';
 import { SentinelEngine } from '../services/sentinelEngine';
@@ -73,7 +74,7 @@ async function speakText(text: string, rate = 0.9): Promise<void> {
       rate,
       pitch: 1.0,
       onDone: resolve,
-      onError: resolve,
+      onError: () => resolve(),
     });
   });
 }
@@ -113,10 +114,10 @@ export function useGhostMode(personaName: string, userName = 'the account holder
       }));
     }, 1000);
 
-    // Start acoustic monitoring (respects deepfakeDetect setting)
-    if (!deepfakeDetect) {
-      // Skip acoustic monitoring when deepfake detection is disabled
-      setState(prev => ({ ...prev, hasMicPermission: false }));
+    // Native STT owns the microphone so Ghost can hear the caller on this phone.
+    // AcousticSentinel only runs on web, where it does not collide with recording.
+    if (Platform.OS !== 'web' || !deepfakeDetect) {
+      setState(prev => ({ ...prev, hasMicPermission: Platform.OS !== 'web' }));
     } else {
       const micGranted = await acousticRef.current.requestPermission();
       setState(prev => ({ ...prev, hasMicPermission: micGranted }));
@@ -142,7 +143,7 @@ export function useGhostMode(personaName: string, userName = 'the account holder
   const sendAIGreeting = useCallback(async () => {
     setState(prev => ({ ...prev, isAISpeaking: true }));
 
-    const greetingText = `Hello, this is ${personaName}, a communications assistant calling on behalf of ${userName}. How may I direct your call?`;
+    const greetingText = `Hello, this is ${personaName}. I'm answering on behalf of ${userName}. How can I help you today?`;
 
     const greetingMsg: GhostMessage = {
       id: `ai-${Date.now()}`,
@@ -218,7 +219,10 @@ export function useGhostMode(personaName: string, userName = 'the account holder
       deepfakeConfidence: deepfakeRef.current,
     });
 
-    const responseText = reply || 'I understand. Could you please elaborate on that?';
+    const responseText = reply
+      || (window.score >= 65
+        ? "I'm not able to share that over the phone. Please send a written request."
+        : "I understand. Could you say that again a bit more slowly?");
 
     const aiMsg: GhostMessage = {
       id: `ai-${Date.now()}`,

@@ -14,7 +14,7 @@
  * Web platform gets no-op stubs to prevent crashes.
  */
 
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 // Simple UUID v4 — avoids react-native-uuid ESM compatibility issues
 function generateUUID(): string {
@@ -24,22 +24,21 @@ function generateUUID(): string {
   });
 }
 
-// react-native-callkeep conditionally imported (requires native build)
+// CallKeep JS constructs NativeEventEmitter on import. Only load if the native
+// module is actually in this binary (not Expo Go / simulator without prebuild).
 let RNCallKeep: any = null;
-
-// Only load on native platforms — never on web
-if (Platform.OS !== 'web') {
+if (Platform.OS !== 'web' && NativeModules.RNCallKeep) {
   try {
     RNCallKeep = require('react-native-callkeep').default;
-  } catch (e) {
-    console.warn('CallKeep not available — running without CallKit:', e);
+  } catch {
+    RNCallKeep = null;
   }
 }
 
 // ── CallKit Configuration ─────────────────────────────────────────────────────
 const CALLKEEP_OPTIONS = {
   ios: {
-    appName: 'CallShield',
+    appName: 'ShieldCall AI',
     supportsVideo: false,
     maximumCallsPerCallGroup: '1',
     maximumCallGroups: '1',
@@ -47,14 +46,14 @@ const CALLKEEP_OPTIONS = {
   },
   android: {
     alertTitle: 'Permissions Required',
-    alertDescription: 'CallShield needs phone management permissions to screen and analyze calls.',
+    alertDescription: 'ShieldCall AI needs phone management permissions to screen and analyze calls.',
     cancelButton: 'Cancel',
     okButton: 'OK',
     additionalPermissions: [],
     foregroundService: {
       channelId: 'callshield-calls',
       channelName: 'Incoming Calls',
-      notificationTitle: 'CallShield is running',
+      notificationTitle: 'ShieldCall AI is running',
       notificationIcon: 'ic_launcher_round',
     },
   },

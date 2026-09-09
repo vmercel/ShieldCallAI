@@ -3,8 +3,7 @@
  * Real-time automatic speech-to-text feeding SENTINEL™ without any user typing.
  *
  * Web platform  → Web Speech API (SpeechRecognition) in continuous mode.
- *                 Captures BOTH parties when phone is on speaker, or the caller
- *                 when using device mic during a call.
+ *                 Captures this phone's live conversation while the call is on.
  *
  * Native        → useNativeSTT: chunked expo-av recording → Deepgram transcription
  *                 via the transcribe-audio Supabase edge function.

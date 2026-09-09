@@ -17,7 +17,6 @@ export interface AppSettings {
   deepfakeDetect: boolean;       // Controls AcousticSentinel on/off
   communityFeed: boolean;        // Controls community threat DB lookup
   quietHours: boolean;           // Auto-screens all calls 10 PM – 8 AM
-  federatedLearning: boolean;    // Encrypted gradient sharing (aspirational)
   autoScreenUnknown: boolean;    // Routes unknown callers to Ghost Mode
 }
 
@@ -25,7 +24,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   deepfakeDetect: true,
   communityFeed: true,
   quietHours: false,
-  federatedLearning: false,
   autoScreenUnknown: true,
 };
 

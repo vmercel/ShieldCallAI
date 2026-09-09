@@ -6,7 +6,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Platform } from 'react-native';
-import { VoiceCommandService, ParsedCommand, parseVoiceCommand, VoiceListenResult } from '../services/voiceCommandService';
+import { VoiceCommandService, ParsedCommand, parseVoiceCommand, VoiceListenResult, captureSpokenUtterance } from '../services/voiceCommandService';
 
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'done' | 'error' | 'manual';
 
@@ -17,6 +17,7 @@ export interface UseVoiceCommandReturn {
   parsedCommand: ParsedCommand | null;
   errorMessage: string;
   isWebSupported: boolean;
+  isVoiceSupported: boolean;
   startListening: () => void;
   stopListening: () => void;
   submitManualText: (text: string) => void;
@@ -32,7 +33,9 @@ export function useVoiceCommand(
   const [parsedCommand, setParsedCommand] = useState<ParsedCommand | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const serviceRef = useRef(new VoiceCommandService());
+  const nativeBusyRef = useRef(false);
   const isWebSupported = VoiceCommandService.isSupported();
+  const isVoiceSupported = Platform.OS !== 'web' || isWebSupported;
 
   const reset = useCallback(() => {
     serviceRef.current.stopListening();
@@ -56,14 +59,34 @@ export function useVoiceCommand(
   }, [onCommand]);
 
   const startListening = useCallback(() => {
-    if (Platform.OS !== 'web' || !isWebSupported) {
-      // Native fallback: show manual input mode
-      setState('manual');
+    reset();
+    setState('listening');
+
+    if (Platform.OS !== 'web') {
+      if (nativeBusyRef.current) return;
+      nativeBusyRef.current = true;
+      captureSpokenUtterance().then(({ transcript, error }) => {
+        nativeBusyRef.current = false;
+        if (error || !transcript) {
+          setErrorMessage(error || "I didn't catch that");
+          setState('error');
+          return;
+        }
+        setInterimText(transcript);
+        handleFinalTranscript(transcript, 0.9);
+      }).catch(() => {
+        nativeBusyRef.current = false;
+        setErrorMessage('Could not hear you. Tap the mic and try again.');
+        setState('error');
+      });
       return;
     }
 
-    reset();
-    setState('listening');
+    if (!isWebSupported) {
+      setState('error');
+      setErrorMessage('Voice is not available in this browser.');
+      return;
+    }
 
     const started = serviceRef.current.startListening(
       (result: VoiceListenResult) => {
@@ -74,9 +97,9 @@ export function useVoiceCommand(
         }
       },
       (error: string) => {
-        // "no-speech" is common — switch to manual rather than showing error
         if (error === 'no-speech' || error === 'aborted') {
-          setState('manual');
+          setErrorMessage("I didn't catch that. Tap the mic and say Call, then a name.");
+          setState('error');
           return;
         }
         setErrorMessage(error);
@@ -87,7 +110,8 @@ export function useVoiceCommand(
     );
 
     if (!started) {
-      setState('manual');
+      setErrorMessage('Could not start the microphone.');
+      setState('error');
     }
   }, [isWebSupported, reset, handleFinalTranscript]);
 
@@ -112,6 +136,7 @@ export function useVoiceCommand(
     parsedCommand,
     errorMessage,
     isWebSupported,
+    isVoiceSupported,
     startListening,
     stopListening,
     submitManualText,
