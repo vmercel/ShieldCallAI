@@ -29,8 +29,7 @@ import { checkAllPermissions } from '../../services/permissionsService';
 import * as Speech from 'expo-speech';
 import { useVoiceCommand } from '../../hooks/useVoiceCommand';
 import { parseVoiceCommand } from '../../services/voiceCommandService';
-import { aiDialerService, DialerResult } from '../../services/aiDialerService';
-import { callRecordsService } from '../../services/callRecordsService';
+import { DialerResult } from '../../services/aiDialerService';
 import { ContactsBook } from '../../components/ContactsBook';
 import { PhoneSetupSheet } from '../../components/PhoneSetupSheet';
 
@@ -413,6 +412,7 @@ function AgentVoicePrompt({
 type AgentPhase = 'idle' | 'running' | 'complete' | 'error';
 
 function AIAgentTab() {
+  const router = useRouter();
   const [instruction, setInstruction] = useState('');
   const [phase, setPhase] = useState<AgentPhase>('idle');
   const [result, setResult] = useState<DialerResult | null>(null);
@@ -427,44 +427,47 @@ function AIAgentTab() {
     setResult(null);
     setError(null);
     setElapsedTime(0);
+    await getAllContacts().catch(() => {});
 
-    timerRef.current = setInterval(() => setElapsedTime(t => t + 1), 1000);
+    const stripped = task.replace(/^(please\s+)?(call|dial|phone)\s+/i, '');
+    const target = stripped.split(/\s+(and|to|about|for)\s+/i)[0].trim();
+    const digits = target.replace(/\D/g, '');
+    const matches = digits.length >= 7 ? [] : searchContactsSync(target);
 
-    const { data, error: callError } = await aiDialerService.executeCall(task.trim());
-
-    timerRef.current && clearInterval(timerRef.current);
-
-    if (callError) {
-      setError(callError);
-      setPhase('error');
-    } else if (data) {
-      setResult(data);
-      setPhase('complete');
-
-      // Save to call records
-      callRecordsService.insert({
-        caller_name: data.callDetails.organization || 'AI Dialer Task',
-        caller_number: 'AI-DIALED',
-        caller_org: data.callDetails.organization,
-        direction: 'outbound',
-        started_at: new Date(Date.now() - (data.duration || 0) * 1000).toISOString(),
-        ended_at: new Date().toISOString(),
-        duration_seconds: data.duration || 0,
-        threat_level: 'safe',
-        threat_score: 0,
-        scam_type: undefined,
-        summary: data.summary,
-        ai_notes: `AI Dialer completed: "${task.trim()}"`,
-        tags: ['ai-dialer', 'outbound'],
-        ghost_handled: false,
-        transcript: data.transcript || [],
-        flags: [],
-        fact_checks: [],
-        is_blocked: false,
-        reported_to_ftc: false,
+    const dial = async (name: string, number: string, contactId?: string) => {
+      timerRef.current && clearInterval(timerRef.current);
+      const { uuid } = await placeRealCall({ name, number });
+      router.push({
+        pathname: '/live-call',
+        params: {
+          contactId: contactId ?? '',
+          callerName: name,
+          callerNumber: number,
+          direction: 'outbound',
+          callUUID: uuid,
+        },
       });
+      setPhase('idle');
+    };
+
+    if (digits.length >= 7) {
+      await dial(target, target);
+      return;
     }
-  }, []);
+    if (matches.length === 1) {
+      await dial(matches[0].name, matches[0].number, matches[0].id);
+      return;
+    }
+    if (matches.length > 1) {
+      timerRef.current && clearInterval(timerRef.current);
+      setError(`Found ${matches.length} contacts named like "${target}". Use Voice or Contacts to pick one.`);
+      setPhase('error');
+      return;
+    }
+    timerRef.current && clearInterval(timerRef.current);
+    setError(`No contact matching "${target}". Open Contacts or the keypad and dial for real.`);
+    setPhase('error');
+  }, [router]);
 
   useEffect(() => {
     return () => { timerRef.current && clearInterval(timerRef.current); };

@@ -18,6 +18,7 @@ import { useApp } from '../contexts/AppContext';
 import { LAB_OTP } from '../services/labAuth';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../constants/theme';
 import { supabase } from '../services/supabaseClient';
+import * as Linking from 'expo-linking';
 import { PermissionsScreen } from '../components/PermissionsScreen';
 
 const { width, height } = Dimensions.get('window');
@@ -289,7 +290,7 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
     }
     setLoading(true);
     const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: 'shieldcallai://reset-password',
+      redirectTo: Linking.createURL('reset-password'),
     });
     setLoading(false);
     if (err) {

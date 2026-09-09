@@ -12,11 +12,30 @@ import { router } from 'expo-router';
 import { registerCallKitEvents, setupCallKit } from '../services/callKitService';
 import { registerPushToken } from '../services/permissionsService';
 import { getAllContacts } from '../services/contactsService';
+import { supabase } from '../services/supabaseClient';
+import * as Linking from 'expo-linking';
+
+async function handleAuthUrl(url: string | null) {
+  if (!url) return;
+  const isReset = url.includes('reset-password') || url.includes('type=recovery');
+  try {
+    const parsed = Linking.parse(url);
+    const code = parsed.queryParams?.code;
+    if (typeof code === 'string' && code.length > 0) {
+      await supabase.auth.exchangeCodeForSession(code);
+    }
+  } catch {}
+  if (isReset) router.push('/reset-password');
+}
 
 // Initialize global services on app start
 function AppInitializer() {
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    Linking.getInitialURL().then(handleAuthUrl).catch(() => {});
+    const linkSub = Linking.addEventListener('url', ({ url }) => { handleAuthUrl(url); });
+    if (Platform.OS === 'web') {
+      return () => linkSub.remove();
+    }
     setupCallKit();
     getAllContacts().catch(() => {});
     registerPushToken().catch(() => {});
@@ -45,7 +64,10 @@ function AppInitializer() {
         });
       },
     });
-    return () => unregister();
+    return () => {
+      unregister();
+      linkSub.remove();
+    };
   }, []);
   return null;
 }
@@ -89,6 +111,7 @@ export default function RootLayout() {
                 <Stack.Screen name="call-detail" />
                 <Stack.Screen name="incoming-call" options={{ presentation: 'fullScreenModal' }} />
                 <Stack.Screen name="lab-call" />
+                <Stack.Screen name="reset-password" />
               </Stack>
             </AuthLoadingGate>
           </ErrorBoundary>

@@ -3,6 +3,54 @@
  */
 import { supabase } from './supabaseClient';
 import { FunctionsHttpError } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const LOCAL_CALLS_KEY = 'shieldcall_local_calls_v1';
+
+function newId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+async function loadLocalCalls(): Promise<CallRecord[]> {
+  try {
+    const raw = await AsyncStorage.getItem(LOCAL_CALLS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeLocalCalls(rows: CallRecord[]): Promise<void> {
+  await AsyncStorage.setItem(LOCAL_CALLS_KEY, JSON.stringify(rows.slice(0, 200)));
+}
+
+async function saveLocalCall(record: InsertCallRecord): Promise<CallRecord> {
+  const row: CallRecord = {
+    ...record,
+    id: newId(),
+    user_id: 'local',
+    created_at: new Date().toISOString(),
+  };
+  const all = await loadLocalCalls();
+  all.unshift(row);
+  await writeLocalCalls(all);
+  return row;
+}
+
+async function migrateLocalToCloud(userId: string): Promise<void> {
+  const local = await loadLocalCalls();
+  if (local.length === 0) return;
+  for (const row of local) {
+    const { id: _id, user_id: _uid, created_at: _c, ...rest } = row;
+    await supabase.from('call_records').insert({ ...rest, user_id: userId });
+  }
+  await AsyncStorage.removeItem(LOCAL_CALLS_KEY);
+}
 
 export interface CallRecord {
   id: string;
@@ -35,6 +83,13 @@ export type InsertCallRecord = Omit<CallRecord, 'id' | 'user_id' | 'created_at'>
 
 export const callRecordsService = {
   async fetchAll(): Promise<{ data: CallRecord[] | null; error: string | null }> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { data: await loadLocalCalls(), error: null };
+    }
+    try {
+      await migrateLocalToCloud(user.id);
+    } catch {}
     const { data, error } = await supabase
       .from('call_records')
       .select('*')
@@ -46,6 +101,8 @@ export const callRecordsService = {
   },
 
   async fetchById(id: string): Promise<{ data: CallRecord | null; error: string | null }> {
+    const local = (await loadLocalCalls()).find(c => c.id === id);
+    if (local) return { data: local, error: null };
     const { data, error } = await supabase
       .from('call_records')
       .select('*')
@@ -58,7 +115,10 @@ export const callRecordsService = {
 
   async insert(record: InsertCallRecord): Promise<{ data: CallRecord | null; error: string | null }> {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { data: null, error: 'Sign in to save this call' };
+    if (!user) {
+      const saved = await saveLocalCall(record);
+      return { data: saved, error: null };
+    }
     const { data, error } = await supabase
       .from('call_records')
       .insert({ ...record, user_id: user.id })
@@ -70,6 +130,13 @@ export const callRecordsService = {
   },
 
   async update(id: string, updates: Partial<CallRecord>): Promise<{ error: string | null }> {
+    const local = await loadLocalCalls();
+    const idx = local.findIndex(c => c.id === id);
+    if (idx >= 0) {
+      local[idx] = { ...local[idx], ...updates };
+      await writeLocalCalls(local);
+      return { error: null };
+    }
     const { error } = await supabase
       .from('call_records')
       .update(updates)
