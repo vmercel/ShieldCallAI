@@ -3,6 +3,7 @@ import { StorageService } from '../services/storageService';
 
 interface AppContextType {
   isOnboarded: boolean;
+  isReady: boolean;
   ghostModeEnabled: boolean;
   personaName: string;
   shieldActive: boolean;
@@ -15,20 +16,25 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [isOnboarded, setIsOnboarded] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const [ghostModeEnabled, setGhostModeEnabled] = useState(true);
   const [personaName, setPersonaNameState] = useState('Alex');
   const [shieldActive] = useState(true);
 
   useEffect(() => {
     (async () => {
-      const [onboarded, ghost, persona] = await Promise.all([
-        StorageService.isOnboarded(),
-        StorageService.getGhostMode(),
-        StorageService.getPersona(),
-      ]);
-      setIsOnboarded(onboarded);
-      setGhostModeEnabled(ghost);
-      setPersonaNameState(persona);
+      try {
+        const [onboarded, ghost, persona] = await Promise.all([
+          StorageService.isOnboarded(),
+          StorageService.getGhostMode(),
+          StorageService.getPersona(),
+        ]);
+        setIsOnboarded(onboarded);
+        setGhostModeEnabled(ghost);
+        setPersonaNameState(persona);
+      } finally {
+        setIsReady(true);
+      }
     })();
   }, []);
 
@@ -48,7 +54,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AppContext.Provider value={{ isOnboarded, ghostModeEnabled, personaName, shieldActive, setOnboarded, setGhostMode, setPersonaName }}>
+    <AppContext.Provider value={{ isOnboarded, isReady, ghostModeEnabled, personaName, shieldActive, setOnboarded, setGhostMode, setPersonaName }}>
       {children}
     </AppContext.Provider>
   );

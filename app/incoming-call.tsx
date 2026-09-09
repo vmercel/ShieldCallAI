@@ -25,6 +25,7 @@ import { communityThreatsService, CommunityThreat } from '../services/communityT
 import { answerCall, reportCallEnded } from '../services/callKitService';
 import { sendScamAlertNotification } from '../services/permissionsService';
 import { useSettings } from '../contexts/SettingsContext';
+import { useApp } from '../contexts/AppContext';
 
 function isQuietHours(): boolean {
   const hour = new Date().getHours();
@@ -77,6 +78,8 @@ export default function IncomingCallScreen() {
   const callerNumber = params.callerNumber ?? '+1 (800) 555-0982';
   const callUUID = params.callUUID ?? null;
   const { settings } = useSettings();
+  const { ghostModeEnabled, personaName } = useApp();
+  const [ghostPickingUp, setGhostPickingUp] = useState(false);
 
   // Contact & threat state
   const [contact, setContact] = useState<Contact | null>(findContactByNumberSync(callerNumber));
@@ -107,11 +110,18 @@ export default function IncomingCallScreen() {
 
   // Load real data in parallel + apply behavioral settings
   useEffect(() => {
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+
     // Quiet hours — auto-route all calls to Ghost Mode immediately
     if (settings.quietHours && isQuietHours() && !autoRoutedRef.current) {
       autoRoutedRef.current = true;
-      const t = setTimeout(() => handleGhost(), 600);
-      return () => clearTimeout(t);
+      setGhostPickingUp(true);
+      timeouts.push(setTimeout(() => handleGhost(), 600));
+    } else if (ghostModeEnabled && !autoRoutedRef.current) {
+      // Ghost Mode on: pick up and converse on the user's behalf
+      autoRoutedRef.current = true;
+      setGhostPickingUp(true);
+      timeouts.push(setTimeout(() => handleGhost(), 1800));
     }
 
     const digits = callerNumber.replace(/\D/g, '');
@@ -148,7 +158,9 @@ export default function IncomingCallScreen() {
         });
       }
     });
-  }, [callerNumber, settings.quietHours, settings.autoScreenUnknown, settings.communityFeed]);
+
+    return () => { timeouts.forEach(clearTimeout); };
+  }, [callerNumber, settings.quietHours, settings.autoScreenUnknown, settings.communityFeed, ghostModeEnabled]);
 
   useEffect(() => {
     // Entry animation
@@ -214,7 +226,16 @@ export default function IncomingCallScreen() {
   const handleGhost = () => {
     if (Platform.OS !== 'web') Vibration.cancel();
     if (callUUID) answerCall(callUUID);
-    router.replace({ pathname: '/ghost-mode' });
+    router.replace({
+      pathname: '/ghost-mode',
+      params: {
+        callerName,
+        callerNumber,
+        direction: 'inbound',
+        callUUID: callUUID ?? '',
+        contactId: contact?.id ?? '',
+      },
+    });
   };
 
   const handleDecline = () => {
@@ -338,7 +359,9 @@ export default function IncomingCallScreen() {
             <TouchableOpacity style={styles.ghostBtn} onPress={handleGhost} activeOpacity={0.85}>
               <MaterialIcons name="hearing" size={24} color={Colors.primary} />
             </TouchableOpacity>
-            <Text style={[styles.actionLabel, { color: Colors.primary }]}>Ghost AI</Text>
+            <Text style={[styles.actionLabel, { color: Colors.primary }]}>
+              {ghostPickingUp ? 'Picking up' : 'Ghost AI'}
+            </Text>
           </View>
 
           <View style={styles.actionGroup}>
@@ -350,7 +373,11 @@ export default function IncomingCallScreen() {
         </View>
 
         <Text style={styles.ghostHint}>
-          Ghost AI answers while SENTINEL™ analyzes in real-time
+          {ghostPickingUp
+            ? `${personaName} is picking up and will talk to the caller for you`
+            : ghostModeEnabled
+            ? `${personaName} will answer this call for you`
+            : 'Ghost AI answers and talks to the caller on your behalf'}
         </Text>
       </View>
     </Animated.View>

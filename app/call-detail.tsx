@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD Call Detail Screen
+ * ShieldCall AI Call Detail Screen
  * Loads real call data from Supabase. Block/Report persist to DB.
  * Community threat reporting integrated.
  */
@@ -317,7 +317,7 @@ export default function CallDetailScreen() {
     };
     if (Platform.OS === 'web') { setBlockModal(true); }
     else {
-      Alert.alert('Block Number', `Block ${call.callerNumber}? CALLSHIELD will automatically decline future calls.`, [
+      Alert.alert('Block Number', `Block ${call.callerNumber}? ShieldCall AI will automatically decline future calls.`, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Block', style: 'destructive', onPress: doBlock },
       ]);
@@ -342,7 +342,7 @@ export default function CallDetailScreen() {
     if (!call) return;
     const lines = transcript.map(t => `[${t.speaker.toUpperCase()}]: ${t.text}`).join('\n\n');
     const content = [
-      'CALLSHIELD caught a scammer!',
+      'ShieldCall AI caught a scammer!',
       '',
       `Number: ${call.callerNumber}`,
       `Threat Score: ${call.threatScore}%`,
@@ -351,7 +351,7 @@ export default function CallDetailScreen() {
       'AI Transcript:',
       lines,
       '',
-      'Protected by CALLSHIELD',
+      'Protected by ShieldCall AI',
     ].join('\n');
     try {
       if (Platform.OS === 'web') {
@@ -360,7 +360,7 @@ export default function CallDetailScreen() {
           showToast('Copied to clipboard!', 'share', Colors.primary);
         }
       } else {
-        await Share.share({ message: content, title: 'CALLSHIELD Scam Expose' });
+        await Share.share({ message: content, title: 'ShieldCall AI Scam Expose' });
       }
     } catch {}
   }, [call, transcript, showToast]);
@@ -411,7 +411,7 @@ export default function CallDetailScreen() {
       <ConfirmModal
         visible={blockModal}
         title="Block Number"
-        message={`Block ${call.callerNumber}? CALLSHIELD will automatically decline future calls from this number.`}
+        message={`Block ${call.callerNumber}? ShieldCall AI will automatically decline future calls from this number.`}
         confirmLabel="Block"
         confirmColor={Colors.danger}
         onConfirm={() => {

@@ -158,6 +158,30 @@ export function findContactByNumberSync(number: string): Contact | null {
   }) ?? findFallbackByNumber(number);
 }
 
+export function searchContactsSync(query: string): Contact[] {
+  const all = cachedContacts && cachedContacts.length > 0 ? cachedContacts : getFallbackContacts();
+  if (!query.trim()) return all;
+  const q = query.toLowerCase().trim();
+  const digits = q.replace(/\D/g, '');
+  return all.filter(c =>
+    c.name.toLowerCase().includes(q) ||
+    c.firstName.toLowerCase().includes(q) ||
+    c.lastName.toLowerCase().includes(q) ||
+    (digits.length >= 3 && c.number.replace(/\D/g, '').includes(digits)) ||
+    (c.org?.toLowerCase().includes(q) ?? false) ||
+    (c.relationship?.toLowerCase().includes(q) ?? false)
+  );
+}
+
+export function findContactByNameSync(name: string): Contact | null {
+  const matches = searchContactsSync(name);
+  if (matches.length === 0) return null;
+  const q = name.toLowerCase().trim();
+  return matches.find(c => c.name.toLowerCase() === q)
+    ?? matches.find(c => c.firstName.toLowerCase() === q)
+    ?? matches[0];
+}
+
 export function getInitials(contact: Contact): string {
   const parts = contact.name.trim().split(/\s+/);
   if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();

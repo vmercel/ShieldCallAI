@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD Shield Screen — Home
+ * ShieldCall Shield Screen — Home
  *
  * 100% real data. No simulations, no mocks, no demos.
  *
@@ -372,9 +372,9 @@ export default function HomeScreen() {
       {/* Header */}
       <FadeInView style={styles.header}>
         <View>
-          <Text style={styles.headerLabel}>CALLSHIELD</Text>
+          <Text style={styles.headerLabel}>SHIELDCALL</Text>
           <Text style={styles.headerSub}>
-            {firstName ? `Welcome back, ${firstName}` : 'SENTINEL™ AI Active'}
+            {firstName ? `Welcome back, ${firstName}` : 'Live analysis on this phone'}
           </Text>
         </View>
         {/* Header with animated active status dot */}
@@ -401,7 +401,7 @@ export default function HomeScreen() {
           onPress={() => router.push('/live-call')}
         >
           <MaterialIcons name="security" size={20} color={Colors.bg} />
-          <Text style={styles.quickTextDark}>Live Call Analysis</Text>
+          <Text style={styles.quickTextDark}>Analyze this call</Text>
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.quickBtn, styles.quickSecondary, pressed && { opacity: 0.8 }]}
@@ -411,6 +411,9 @@ export default function HomeScreen() {
           <Text style={styles.quickTextLight}>Ghost Mode</Text>
         </Pressable>
       </FadeInView>
+      <Text style={styles.samePhoneHint}>
+        One phone. Place or answer through ShieldCall, stay on screen, and a tile slides in every chunk: AI or human, scam or genuine, likelihood.
+      </Text>
 
       {/* SENTINEL™ Intelligence — Real Analytics from Call Records */}
       <SlideInCard delay={240}>
@@ -427,8 +430,8 @@ export default function HomeScreen() {
             <Text style={styles.ghostTitle}>Ghost Mode</Text>
             <Text style={styles.ghostSub}>
               {ghostModeEnabled
-                ? `"${personaName}" is answering suspicious calls automatically via OnSpace AI`
-                : 'AI answers suspicious calls while you listen silently in real-time'}
+                ? `${personaName} picks up and talks to the caller for you`
+                : 'Turn on to have ShieldCall answer and converse on your behalf'}
             </Text>
           </View>
         </View>
@@ -632,7 +635,14 @@ const styles = StyleSheet.create({
   shieldSavings: { fontSize: FontSize.sm, color: Colors.safe, fontWeight: FontWeight.semibold },
 
   // Quick Actions
-  quickRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
+  quickRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm },
+  samePhoneHint: {
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: Spacing.md,
+    paddingHorizontal: 2,
+  },
   quickBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, paddingVertical: 14, borderRadius: Radius.md,

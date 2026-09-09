@@ -14,11 +14,11 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Animated, Platform,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../constants/theme';
 import { useApp } from '../contexts/AppContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -94,7 +94,6 @@ function IntelCard({ label, value, icon, color }: { label: string; value: string
 
 // ─── Listening Status Bar ─────────────────────────────────────────────────
 function ListeningBar({
-  isWebSTT,
   isListening,
   wordCount,
   interimText,
@@ -102,7 +101,6 @@ function ListeningBar({
   threatColor,
   listenAnim,
 }: {
-  isWebSTT: boolean;
   isListening: boolean;
   wordCount: number;
   interimText: string;
@@ -112,36 +110,27 @@ function ListeningBar({
 }) {
   return (
     <View style={[styles.listenBar, {
-      backgroundColor: isWebSTT && isListening ? Colors.primaryGlow : Colors.bgCard,
-      borderColor: isWebSTT && isListening ? Colors.primary + '44' : Colors.border,
+      backgroundColor: isListening ? Colors.primaryGlow : Colors.bgCard,
+      borderColor: isListening ? Colors.primary + '44' : Colors.border,
     }]}>
-      {isWebSTT ? (
-        <>
-          <Animated.View style={[styles.listenDot, {
-            backgroundColor: isListening ? Colors.primary : Colors.textMuted,
-            opacity: listenAnim,
-          }]} />
-          <MaterialIcons name="hearing" size={14} color={isListening ? Colors.primary : Colors.textMuted} />
-          <Text style={[styles.listenLabel, { color: isListening ? Colors.primary : Colors.textMuted }]} numberOfLines={1}>
-            {interimText
-              ? interimText
-              : isListening
-              ? 'Listening for caller... speak naturally'
-              : 'Initializing auto-transcription...'}
-          </Text>
-          <Text style={styles.listenCount}>{wordCount}w</Text>
-        </>
-      ) : (
-        <>
-          <MaterialIcons name="graphic-eq" size={13} color={Colors.primary} />
-          <View style={styles.miniWaveWrap}>
-            {amplitudeHistory.slice(-16).map((amp, i) => (
-              <WaveBar key={i} amplitude={amp} color={threatColor} />
-            ))}
-          </View>
-          <Text style={[styles.listenLabel, { color: Colors.primary }]}>Acoustic monitoring active</Text>
-        </>
-      )}
+      <Animated.View style={[styles.listenDot, {
+        backgroundColor: isListening ? Colors.primary : Colors.textMuted,
+        opacity: listenAnim,
+      }]} />
+      <MaterialIcons name="hearing" size={14} color={isListening ? Colors.primary : Colors.textMuted} />
+      <View style={styles.miniWaveWrap}>
+        {amplitudeHistory.slice(-12).map((amp, i) => (
+          <WaveBar key={i} amplitude={amp} color={threatColor} />
+        ))}
+      </View>
+      <Text style={[styles.listenLabel, { color: isListening ? Colors.primary : Colors.textMuted }]} numberOfLines={1}>
+        {interimText
+          ? interimText
+          : isListening
+          ? 'Hearing the caller on this phone'
+          : 'Connecting to the caller...'}
+      </Text>
+      <Text style={styles.listenCount}>{wordCount}w</Text>
     </View>
   );
 }
@@ -151,7 +140,10 @@ export default function GhostModeScreen() {
   const router = useRouter();
   const { personaName } = useApp();
   const { settings } = useSettings();
+  const params = useLocalSearchParams<{ callerName?: string; callerNumber?: string }>();
   const ghost = useGhostMode(personaName, 'the account holder', settings.deepfakeDetect);
+  const callerLabel = params.callerName || params.callerNumber || 'Incoming caller';
+  const speakingPrev = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
   const intelScrollRef = useRef<ScrollView>(null);
   const threatAnim = useRef(new Animated.Value(0)).current;
@@ -179,14 +171,14 @@ export default function GhostModeScreen() {
 
   const transcription = useLiveTranscription(handleCallerSegment);
 
-  const isWebSTT = Platform.OS === 'web' && transcription.isSupported;
-
-  // ── Mount: initialize ghost + start transcription ────────────────────────
+  // ── Mount: greet, then listen to the caller on this phone ────────────────
   useEffect(() => {
-    ghost.initialize();
-    transcription.start();
+    let active = true;
+    (async () => {
+      await ghost.initialize();
+      if (active) transcription.start();
+    })();
 
-    // Pulse listening dot
     const listenPulse = Animated.loop(Animated.sequence([
       Animated.timing(listenDotAnim, { toValue: 0.25, duration: 700, useNativeDriver: true }),
       Animated.timing(listenDotAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
@@ -194,10 +186,22 @@ export default function GhostModeScreen() {
     listenPulse.start();
 
     return () => {
+      active = false;
       transcription.stop();
       listenPulse.stop();
     };
   }, []);
+
+  // Do not feed Ghost's own voice back into the listener
+  useEffect(() => {
+    if (ghost.isAISpeaking && !speakingPrev.current) {
+      transcription.stop();
+    }
+    if (!ghost.isAISpeaking && speakingPrev.current) {
+      transcription.start();
+    }
+    speakingPrev.current = ghost.isAISpeaking;
+  }, [ghost.isAISpeaking]);
 
   useEffect(() => {
     Animated.timing(threatAnim, { toValue: ghost.threatScore, duration: 600, useNativeDriver: false }).start();
@@ -209,10 +213,15 @@ export default function GhostModeScreen() {
     }
   }, [ghost.messages.length]);
 
-  // Sync amplitude from acoustic monitoring into waveform
+  // Sync amplitude from acoustic monitoring or native STT into waveform
   useEffect(() => {
+    const native = transcription as typeof transcription & { amplitudeHistory?: number[] };
+    if (native.amplitudeHistory && native.amplitudeHistory.length > 0) {
+      setAmplitudeHistory(native.amplitudeHistory.slice(-16));
+      return;
+    }
     setAmplitudeHistory(prev => [...prev.slice(-15), ghost.amplitude || 0.05]);
-  }, [ghost.amplitude]);
+  }, [ghost.amplitude, (transcription as any).amplitudeHistory]);
 
   const meterWidth = threatAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
 
@@ -220,6 +229,19 @@ export default function GhostModeScreen() {
     transcription.stop();
     await ghost.endSession();
     router.back();
+  };
+
+  const handleJoin = async () => {
+    transcription.stop();
+    await ghost.endSession();
+    router.replace({
+      pathname: '/live-call',
+      params: {
+        callerName: params.callerName ?? callerLabel,
+        callerNumber: params.callerNumber ?? 'This phone',
+        direction: 'inbound',
+      },
+    });
   };
 
   return (
@@ -248,7 +270,11 @@ export default function GhostModeScreen() {
         <PulseRing color={ghost.isAISpeaking ? Colors.primary : threatColor} isActive={ghost.isAISpeaking} />
         <Text style={styles.personaName}>{personaName}</Text>
         <Text style={[styles.personaStatus, { color: ghost.isAISpeaking ? Colors.primary : Colors.textSecondary }]}>
-          {ghost.isAISpeaking ? 'Responding to caller...' : ghost.isProcessing ? 'Processing...' : 'Listening to caller'}
+          {ghost.isAISpeaking
+            ? `Speaking to ${callerLabel}`
+            : ghost.isProcessing
+            ? 'Thinking...'
+            : `Answering ${callerLabel} for you`}
         </Text>
       </View>
 
@@ -300,7 +326,6 @@ export default function GhostModeScreen() {
 
       {/* Auto-Listening Status Bar */}
       <ListeningBar
-        isWebSTT={isWebSTT}
         isListening={transcription.isListening}
         wordCount={transcription.wordCount}
         interimText={transcription.interimText}
@@ -319,10 +344,10 @@ export default function GhostModeScreen() {
         {ghost.messages.length === 0 && (
           <View style={styles.emptyTranscript}>
             <MaterialIcons name="hearing" size={28} color={Colors.primary} />
-            <Text style={styles.emptyText}>{personaName} is ready</Text>
+            <Text style={styles.emptyText}>{personaName} picked up for you</Text>
             <Text style={styles.emptySubText}>
-              Caller audio is auto-transcribed and analyzed.{'\n'}
-              {personaName} will respond automatically.
+              {personaName} is on the line with {callerLabel}.{'\n'}
+              You can listen. Join anytime if you want to take over.
             </Text>
           </View>
         )}
@@ -358,7 +383,7 @@ export default function GhostModeScreen() {
 
       {/* Action Buttons */}
       <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
-        <TouchableOpacity style={styles.joinBtn} onPress={handleEnd} activeOpacity={0.85}>
+        <TouchableOpacity style={styles.joinBtn} onPress={handleJoin} activeOpacity={0.85}>
           <MaterialIcons name="phone" size={16} color={Colors.textInverse} />
           <Text style={styles.joinText}>Join Call</Text>
         </TouchableOpacity>

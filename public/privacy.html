@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy - ShieldCall</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #060E1E;
+      color: #E8F4FD;
+      margin: 0;
+      padding: 0;
+      line-height: 1.7;
+    }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+    .logo { font-size: 20px; font-weight: 900; color: #00B4D8; letter-spacing: 2px; margin-bottom: 40px; }
+    h1 { font-size: 32px; font-weight: 900; color: #FFFFFF; margin: 0 0 8px; }
+    .effective { font-size: 13px; color: #64748B; margin-bottom: 32px; }
+    h2 { font-size: 18px; font-weight: 700; color: #00B4D8; margin: 40px 0 12px; border-bottom: 1px solid #1E3A5F; padding-bottom: 8px; }
+    p, li { font-size: 15px; color: #94A3B8; margin: 0 0 14px; }
+    ul { padding-left: 20px; margin: 0 0 14px; }
+    li { margin-bottom: 6px; }
+    strong { color: #E8F4FD; }
+    .highlight {
+      background: #0D2137;
+      border: 1px solid #1E3A5F;
+      border-left: 3px solid #00B4D8;
+      border-radius: 6px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+    .highlight p { margin: 0; color: #CBD5E1; }
+    a { color: #00B4D8; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid #1E3A5F; font-size: 13px; color: #475569; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">SHIELDCALL</div>
+    <h1>Privacy Policy</h1>
+    <p class="effective">Effective 7 September 2026</p>
+
+    <div class="highlight">
+      <p><strong>The short version:</strong> ShieldCall analyzes the conversation on this phone while the call is ongoing. Summary tiles show whether the voice is AI or human, whether the content looks like a scam or genuine, and likelihood. It does not hang up for you and does not sell your data. Optional speech-to-text uses the operating system. Apple or Google may receive audio if the OS sends it. We do not claim that audio stays on the device.</p>
+    </div>
+
+    <h2>1. Who we are</h2>
+    <p>ShieldCall ("we", "us") is a free mobile application. The bundle identifier is <strong>com.shieldcallai.app</strong>. Privacy questions: <a href="mailto:privacy@shieldcallai.com">privacy@shieldcallai.com</a>.</p>
+
+    <h2>2. What the app does</h2>
+    <p>Live Protect is the v1 product. Place or answer through ShieldCall on this phone. The app analyzes the live conversation and slides in a summary tile every chunk: AI or human voice, scam or genuine, likelihood.</p>
+    <p>The app is recommend-only. It never hangs up for you. It is not a carrier intercept, a wiretap, or a certified fraud product.</p>
+
+    <h2>3. Microphone</h2>
+    <p>The microphone is used to hear this phone's live conversation during a consented session. We request permission first. You must confirm in the app that you are allowed to analyze the call before listening starts. If you deny microphone access, Live Protect cannot listen.</p>
+
+    <h2>4. Optional speech-to-text via the OS</h2>
+    <p>When you start listening, ShieldCall may use the operating system's speech recognition: Apple Speech on iOS, the Android speech recognizer on Android, and the Web Speech API on web.</p>
+    <p>We do not control whether that recognizer runs fully on this device or sends audio to Apple or Google. That is dictated by the OS, language packs, device settings, and network. We do not claim on-device-only processing.</p>
+    <p>If speech recognition is unavailable, you can type a sentence you heard. Scoring still runs.</p>
+
+    <h2>5. Optional LAN sidecar</h2>
+    <p>If you run a detector sidecar on your local network (by default at <code>http://127.0.0.1:8765</code>), the app may send transcript text to that sidecar to help score the call. The sidecar is optional and stays on the network you control. If it is down, the app continues to work (fail-open). You do not have to run a sidecar.</p>
+
+    <h2>6. What we do not do</h2>
+    <ul>
+      <li>We do not intercept carrier audio or join the telephony path.</li>
+      <li>We do not hang up calls for you.</li>
+      <li>We do not sell your data.</li>
+      <li>We do not use your audio or transcripts for advertising or tracking.</li>
+      <li>We do not claim that audio never leaves the device.</li>
+    </ul>
+
+    <h2>7. Data we process</h2>
+    <ul>
+      <li><strong>Microphone audio</strong>, while you are listening, to power OS speech recognition and a local volume proxy.</li>
+      <li><strong>Transcript text and scam-language scores</strong> kept on this device for the session.</li>
+      <li><strong>Optional transcript text</strong> to a LAN sidecar you run.</li>
+      <li><strong>Account fields</strong> (name, email, and similar) if you create an account, stored by our auth provider.</li>
+      <li><strong>Contacts</strong>, only if you grant contacts permission, stay on the device for caller labeling. Contacts are not required for Live Protect.</li>
+      <li><strong>Settings and consent flags</strong> stored locally.</li>
+    </ul>
+
+    <h2>8. Cloud and third parties</h2>
+    <p>Apple and/or Google may process audio if you use OS speech recognition, under their own policies. We cannot override that.</p>
+    <p>If you sign in, account data is stored with our backend provider (Supabase).</p>
+    <p>Some experimental screens that remain in the binary may call additional transcription or AI services if those services are configured. Live Protect does not require them. Guest use of Protect works without a paid plan and without a working Deepgram or Claude key.</p>
+
+    <h2>9. Retention</h2>
+    <p>ShieldCall does not keep a raw recording of the call. Transcripts and scores live on the device unless you save history. Account data lasts until you delete it. Operating-system vendors may retain speech data under their own policies.</p>
+
+    <h2>10. Your choices</h2>
+    <ul>
+      <li>Refuse microphone or speech permission.</li>
+      <li>Do not start listening.</li>
+      <li>Type text instead of using speech recognition.</li>
+      <li>Do not run a LAN sidecar.</li>
+      <li>Delete local data from Settings. If you have an account, use Delete My Data or email <a href="mailto:privacy@shieldcallai.com">privacy@shieldcallai.com</a>.</li>
+    </ul>
+
+    <h2>11. Legal right to analyze the call</h2>
+    <p>You must have the legal right to analyze the call, including all-party consent where the law requires it. See the <a href="terms.html">Terms of Use</a>.</p>
+
+    <h2>12. Children</h2>
+    <p>ShieldCall is not directed at children under 13 (or 16 in the European Union). We do not knowingly collect personal information from children.</p>
+
+    <h2>13. Changes</h2>
+    <p>We will update the effective date when this policy changes. Continued use after an update means you accept the new policy.</p>
+
+    <h2>14. Contact</h2>
+    <p>ShieldCall Privacy. Email: <a href="mailto:privacy@shieldcallai.com">privacy@shieldcallai.com</a>.</p>
+
+    <footer>
+      <p>Copyright 2026 ShieldCall. All rights reserved.</p>
+      <p><a href="terms.html">Terms of Use</a> · <a href="mailto:privacy@shieldcallai.com">Contact</a></p>
+    </footer>
+  </div>
+</body>
+</html>

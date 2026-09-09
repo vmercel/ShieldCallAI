@@ -1,24 +1,47 @@
 {
   "expo": {
-    "name": "CallShield",
-    "slug": "callshield",
+    "name": "ShieldCall",
+    "slug": "shieldcallai",
     "version": "1.0.0",
+    "description": "Analyzes the conversation on this phone while the call is ongoing. Shows AI vs human, scam vs genuine, and likelihood on a sliding tile every chunk.",
+    "githubUrl": "https://github.com/vmercel/CallShield",
     "orientation": "portrait",
-    "icon": "./assets/images/logo.png",
-    "scheme": "callshield",
+    "icon": "./assets/images/icon.png",
+    "scheme": "shieldcallai",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "extra": {
+      "privacyPolicyUrl": "https://github.com/vmercel/CallShield/blob/main/public/privacy.html",
+      "termsOfServiceUrl": "https://github.com/vmercel/CallShield/blob/main/public/terms.html"
+    },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.callshield.app",
+      "bundleIdentifier": "com.shieldcallai.app",
+      "privacyManifests": {
+        "NSPrivacyTracking": false,
+        "NSPrivacyCollectedDataTypes": [
+          {
+            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeAudioData",
+            "NSPrivacyCollectedDataTypeLinked": false,
+            "NSPrivacyCollectedDataTypeTracking": false,
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          }
+        ]
+      },
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "CallShield needs microphone access to analyze live calls with SENTINEL™ AI and detect scam voices in real-time.",
-        "NSContactsUsageDescription": "CallShield accesses your contacts to identify callers, show caller names, and help protect you from unknown numbers.",
-        "NSCameraUsageDescription": "CallShield may use the camera for future identity verification features.",
-        "NSSpeechRecognitionUsageDescription": "CallShield uses speech recognition to transcribe calls in real-time for SENTINEL™ AI threat analysis.",
-        "NSLocalNetworkUsageDescription": "CallShield may use local network for VoIP call routing.",
+        "NSMicrophoneUsageDescription": "ShieldCall uses the microphone to analyze this phone's conversation while a call is ongoing so it can warn you about scams.",
+        "NSContactsUsageDescription": "ShieldCall may access contacts to label callers on this device. Contacts are not required for Live Protect.",
+        "NSCameraUsageDescription": "ShieldCall does not use the camera in v1.",
+        "NSSpeechRecognitionUsageDescription": "ShieldCall uses the operating system's speech recognition to transcribe this phone's live conversation so it can score scam language. Audio may be sent to Apple or Google as your OS dictates.",
+        "NSLocalNetworkUsageDescription": "ShieldCall may connect to an optional detector sidecar on your local network. The app works if that sidecar is not running.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
+          "NSAllowsArbitraryLoads": true
+        },
         "UIBackgroundModes": ["voip", "audio", "fetch", "remote-notification", "processing"],
-        "BGTaskSchedulerPermittedIdentifiers": ["com.callshield.background-analysis"],
+        "BGTaskSchedulerPermittedIdentifiers": ["com.shieldcallai.background-analysis"],
         "CFBundleAllowMixedLocalizations": true,
         "ITSAppUsesNonExemptEncryption": false
       },
@@ -33,7 +56,7 @@
         "backgroundColor": "#060E1E"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.callshield.app",
+      "package": "com.shieldcallai.app",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_CONTACTS",
@@ -68,13 +91,13 @@
       [
         "expo-av",
         {
-          "microphonePermission": "CallShield needs microphone access to analyze live calls with SENTINEL™ AI and detect scam voices in real-time."
+          "microphonePermission": "ShieldCall uses the microphone to analyze this phone's conversation while a call is ongoing so it can warn you about scams."
         }
       ],
       [
         "expo-contacts",
         {
-          "contactsPermission": "CallShield accesses your contacts to identify callers and protect you from unknown numbers."
+          "contactsPermission": "ShieldCall may access contacts to label callers on this device. Contacts are not required for Live Protect."
         }
       ],
       [
@@ -82,7 +105,7 @@
         {
           "icon": "./assets/images/logo.png",
           "color": "#00B4D8",
-          "defaultChannel": "callshield-alerts"
+          "defaultChannel": "shieldcallai-alerts"
         }
       ]
     ],

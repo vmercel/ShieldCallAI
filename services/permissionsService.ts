@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD Permissions Service
+ * ShieldCall AI Permissions Service
  *
  * Centralized permission management for all capabilities the app needs.
  * Handles: Microphone, Contacts, Notifications, Speech Recognition.
@@ -174,14 +174,14 @@ export async function registerPushToken(): Promise<string | null> {
 
     // Set Android notification channel
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('callshield-alerts', {
-        name: 'CallShield Alerts',
+      await Notifications.setNotificationChannelAsync('shieldcallai-alerts', {
+        name: 'ShieldCall AI Alerts',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#00B4D8',
         sound: 'alert.wav',
       });
-      await Notifications.setNotificationChannelAsync('callshield-calls', {
+      await Notifications.setNotificationChannelAsync('shieldcallai-calls', {
         name: 'Incoming Calls',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 500, 500, 500],

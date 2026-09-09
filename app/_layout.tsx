@@ -1,3 +1,4 @@
+import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -7,7 +8,6 @@ import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { SettingsProvider } from '../contexts/SettingsContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors } from '../constants/theme';
-import { useEffect } from 'react';
 import { setupCallKit } from '../services/callKitService';
 import { registerPushToken } from '../services/permissionsService';
 import { getAllContacts } from '../services/contactsService';
@@ -32,8 +32,8 @@ function AuthLoadingGate({ children }: { children: React.ReactNode }) {
     return (
       <View style={loadingStyles.container}>
         <View style={loadingStyles.logoWrap}>
-          <Text style={loadingStyles.logo}>CALLSHIELD</Text>
-          <Text style={loadingStyles.sub}>SENTINEL™ AI Active</Text>
+          <Text style={loadingStyles.logo}>ShieldCall</Text>
+          <Text style={loadingStyles.sub}>Live Protect</Text>
         </View>
         <ActivityIndicator color={Colors.primary} size="large" style={{ marginTop: 40 }} />
         <Text style={loadingStyles.hint}>Restoring your protection...</Text>
@@ -58,9 +58,13 @@ export default function RootLayout() {
                 <Stack.Screen name="onboarding" />
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="live-call" options={{ presentation: 'fullScreenModal' }} />
+                <Stack.Screen name="protect" options={{ presentation: 'fullScreenModal' }} />
+                <Stack.Screen name="privacy" />
+                <Stack.Screen name="terms" />
                 <Stack.Screen name="ghost-mode" options={{ presentation: 'fullScreenModal' }} />
                 <Stack.Screen name="call-detail" />
                 <Stack.Screen name="incoming-call" options={{ presentation: 'fullScreenModal' }} />
+                <Stack.Screen name="lab-call" />
               </Stack>
             </AuthLoadingGate>
           </ErrorBoundary>
@@ -70,8 +74,6 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
-
-import React from 'react';
 
 const loadingStyles = StyleSheet.create({
   container: {

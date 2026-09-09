@@ -2,7 +2,7 @@
  * CALLSHIELD SENTINEL™ Analysis Edge Function — Claude Anthropic
  *
  * Receives a 10-second transcript chunk + full call context and returns
- * a comprehensive real-time threat analysis using Claude claude-3-5-haiku-20241022.
+ * a comprehensive real-time threat analysis using Claude Haiku 4.5.
  *
  * Response shape:
  * {
@@ -131,7 +131,7 @@ Analyze ALL of the above holistically. Apply the peak ratchet rule: if peakRiskS
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 600,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],

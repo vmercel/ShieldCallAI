@@ -1,21 +1,14 @@
 /**
- * CALLSHIELD Live Call Screen — Claude SENTINEL™ AI Analysis
+ * ShieldCall Live Call — same-phone in-call analysis
  *
- * Analysis Architecture (v3 — Claude Powered):
- * ─────────────────────────────────────────────────────────
- * • Every 10 seconds, the current chunk is sent to Claude (claude-3-5-haiku)
- *   via the sentinel-analysis Edge Function for real AI threat analysis.
- * • Claude receives the FULL cumulative transcript + acoustic signals every batch.
- * • Peak-score ratchet: Claude enforces 85% floor server-side; client adds 75% floor.
- * • Result card updates on every Claude response — caller type, spam status,
- *   content verdict, flags, and scam classification all come from Claude.
- * • Local SENTINEL™ NLP engine runs in parallel as fallback if Claude is unavailable.
- * • AcousticSentinel™ runs in real-time, contributing deepfake confidence to Claude.
+ * Stay on this screen while the call runs on THIS phone (AI Dialer / incoming /
+ * CallKit). One live result card. Each ~10s window revises the running verdict
+ * (previous + current), so confidence can rise or fall as more speech is heard.
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity,
   Animated, Easing, Platform, KeyboardAvoidingView, TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,12 +19,14 @@ import { SentinelEngine } from '../services/sentinelEngine';
 import { AcousticSentinel, AcousticSnapshot } from '../services/acousticSentinel';
 import { ThreatLevel } from '../constants/mockData';
 import { findContactByNumberSync as findContactByNumber, getInitials, Contact } from '../services/contactsService';
-import { useLiveTranscription, TranscriptSegment } from '../hooks/useLiveTranscription';
+import { useLiveTranscription } from '../hooks/useLiveTranscription';
 import { useSettings } from '../contexts/SettingsContext';
 import { callRecordsService } from '../services/callRecordsService';
 import { communityThreatsService, CommunityThreat } from '../services/communityThreatsService';
 import { supabase } from '../services/supabaseClient';
 import { FunctionsHttpError } from '@supabase/supabase-js';
+import { LiveResultCard, ChunkAnalysis } from '../components/ChunkSummaryTile';
+import { useDetectorCore } from '../hooks/useDetectorCore';
 
 function formatDuration(s: number) {
   return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
@@ -63,6 +58,7 @@ interface AnalysisResult {
   peakScore: number;
   lastUpdated: number;
   poweredByClaude: boolean;
+  poweredByCore?: boolean;
   claudeReasoning?: string;
 }
 
@@ -74,7 +70,7 @@ function buildEmptyResult(): AnalysisResult {
     spamStatus: 'checking', spamReportCount: 0,
     contentVerdict: 'insufficient', contentVerdictScore: 0,
     wordsAnalyzed: 0, batchCount: 0, contextQuality: 'low',
-    peakScore: 0, lastUpdated: 0, poweredByClaude: false,
+    peakScore: 0, lastUpdated: 0, poweredByClaude: false, poweredByCore: false,
   };
 }
 
@@ -86,7 +82,71 @@ function getContextQuality(words: number, batches: number): AnalysisResult['cont
   return 'low';
 }
 
+function inferVoiceFromAcoustics(
+  deepfake: number,
+  hasMic: boolean,
+  batches: number,
+  wordCount: number,
+): { callerType: CallerType; callerTypeConfidence: number } {
+  if (!hasMic && batches === 0 && deepfake <= 0) {
+    return { callerType: 'unknown', callerTypeConfidence: 0 };
+  }
+  // Amplitude variance is not a vocoder detector. If we heard words, treat as human
+  // unless the cue is extreme. Core's acoustic stream is the real synth score.
+  if (wordCount > 0 && deepfake < 80) {
+    return {
+      callerType: 'human',
+      callerTypeConfidence: Math.min(90, Math.max(62, 100 - Math.round(deepfake * 0.4))),
+    };
+  }
+  if (deepfake >= 80) {
+    return { callerType: 'ai_synthetic', callerTypeConfidence: Math.min(90, Math.round(deepfake)) };
+  }
+  return {
+    callerType: 'human',
+    callerTypeConfidence: Math.min(88, Math.max(55, 100 - Math.round(deepfake))),
+  };
+}
+
+function voiceLikelihoodLabel(type: CallerType, conf: number): string {
+  if (type === 'ai_synthetic') return `${conf}% likely AI / synthetic voice`;
+  if (type === 'human') return `${conf}% likely human voice`;
+  return 'Voice type still checking';
+}
+
+function contentLikelihoodLabel(verdict: ContentVerdict, score: number): string {
+  if (verdict === 'scam') return `${score}% likely a scam`;
+  if (verdict === 'genuine') return `${score}% likely genuine`;
+  if (verdict === 'suspicious') return `${score}% likely suspicious`;
+  return 'Need more speech for a content verdict';
+}
+
+/** Running verdict: previous window plus this chunk. Can rise or fall. */
+function blendToward(prev: number, incoming: number, n: number): number {
+  const alpha = 1 / (1 + 0.42 * Math.max(0, n - 1));
+  return Math.round(Math.max(0, Math.min(100, alpha * incoming + (1 - alpha) * prev)));
+}
+
+function blendVoice(
+  prevType: CallerType,
+  prevConf: number,
+  nextType: CallerType,
+  nextConf: number,
+  n: number,
+): { callerType: CallerType; callerTypeConfidence: number } {
+  const prevSynth = prevType === 'ai_synthetic' ? prevConf : prevType === 'human' ? 100 - prevConf : 50;
+  const nextSynth = nextType === 'ai_synthetic' ? nextConf : nextType === 'human' ? 100 - nextConf : 50;
+  const synth = blendToward(prevSynth, nextSynth, n);
+  if (n === 1 && nextType === 'unknown') {
+    return { callerType: 'unknown', callerTypeConfidence: 0 };
+  }
+  if (synth >= 55) return { callerType: 'ai_synthetic', callerTypeConfidence: synth };
+  return { callerType: 'human', callerTypeConfidence: Math.max(0, 100 - synth) };
+}
+
 // ─── Claude SENTINEL™ Edge Function Call ─────────────────────────────────────
+let claudeUnavailable = false;
+
 async function callClaudeSentinel(params: {
   currentChunk: string;
   fullTranscript: string;
@@ -100,12 +160,16 @@ async function callClaudeSentinel(params: {
   callDirection: string;
   durationSeconds: number;
 }): Promise<Record<string, unknown> | null> {
+  if (claudeUnavailable) return null;
   try {
     const { data, error } = await supabase.functions.invoke('sentinel-analysis', { body: params });
     if (error) {
       let msg = error.message;
       if (error instanceof FunctionsHttpError) {
         try { msg = await error.context?.text(); } catch {}
+      }
+      if (String(msg).includes('not_found_error') || String(msg).includes('404')) {
+        claudeUnavailable = true;
       }
       console.warn('Claude SENTINEL error:', msg);
       return null;
@@ -184,17 +248,6 @@ function CallerAvatar({ contact, size = 56, color }: { contact?: Contact | null;
       <MaterialIcons name="person" size={size * 0.45} color={color} />
     </View>
   );
-}
-
-function SpeakerLabel({ speaker, direction }: { speaker: 'A' | 'B'; direction: string }) {
-  const isOutbound = direction === 'outbound';
-  const label = isOutbound
-    ? (speaker === 'A' ? 'YOU' : 'THEM')
-    : (speaker === 'A' ? 'CALLER' : 'YOU');
-  const color = isOutbound
-    ? (speaker === 'A' ? Colors.primary : Colors.warning)
-    : (speaker === 'A' ? Colors.warning : Colors.primary);
-  return <Text style={{ fontSize: 9, fontWeight: '900', color, letterSpacing: 0.8, marginBottom: 2 }}>{label}</Text>;
 }
 
 // ─── RESULT CARD ─────────────────────────────────────────────────────────────
@@ -377,16 +430,18 @@ export default function LiveCallScreen() {
   }>();
 
   const direction = params.direction ?? 'inbound';
-  const callerNumber = params.callerNumber ?? '+1 (202) 555-0147';
-  const contact = findContactByNumber(callerNumber);
-  const callerName = contact?.name ?? params.callerName ?? 'Unknown Caller';
+  const callerNumber = params.callerNumber ?? 'This phone';
+  const contact = callerNumber === 'This phone' ? null : findContactByNumber(callerNumber);
+  const callerName = contact?.name ?? params.callerName ?? 'Live conversation';
   const { settings } = useSettings();
+  const detector = useDetectorCore();
 
   const sentinelRef = useRef(new SentinelEngine());
   const acousticRef = useRef(new AcousticSentinel());
 
   const [duration, setDuration] = useState(0);
   const [result, setResult] = useState<AnalysisResult>(buildEmptyResult());
+  const [liveCard, setLiveCard] = useState<ChunkAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [amplitudeHistory, setAmplitudeHistory] = useState<number[]>(Array(32).fill(0.05));
   const [acousticStress, setAcousticStress] = useState(0);
@@ -411,20 +466,21 @@ export default function LiveCallScreen() {
   const wordsAnalyzedRef = useRef(0);
   const acousticStressRef = useRef(0);
   const deepfakeRef = useRef(0);
+  const hasMicRef = useRef(false);
   const durationRef = useRef(0);
-  const peakScoreRef = useRef(0);                     // Highest score ever seen — ratchet anchor
+  const peakScoreRef = useRef(0);
+  const resultRef = useRef<AnalysisResult>(buildEmptyResult());
   const isAnalyzingRef = useRef(false);               // Guard against concurrent Claude calls
   const threatTimelineRef = useRef<{ time: number; score: number }[]>([]); // Per-window scores
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const listenDotAnim = useRef(new Animated.Value(1)).current;
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const transcriptRef = useRef<ScrollView>(null);
   const factCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Spam check (respects communityFeed setting) ──────────────────────────
   useEffect(() => {
-    if (!callerNumber || callerNumber === 'AI-DIALED' || !settings.communityFeed) {
+    if (!callerNumber || callerNumber === 'AI-DIALED' || callerNumber === 'This phone' || !settings.communityFeed) {
       setSpamChecked(true);
       return;
     }
@@ -441,7 +497,9 @@ export default function LiveCallScreen() {
     const newText = batchBufferRef.current.join(' ');
     const newWords = newText.split(/\s+/).filter(Boolean).length;
 
-    if (newWords === 0 && batchCountRef.current === 0 && !spamChecked) return;
+    if (newWords === 0) {
+      return;
+    }
 
     isAnalyzingRef.current = true;
     setIsAnalyzing(true);
@@ -465,22 +523,25 @@ export default function LiveCallScreen() {
 
     const contextQuality = getContextQuality(wordsAnalyzedRef.current, batchCountRef.current);
 
-    // ── Call Claude SENTINEL™ Edge Function ──
-    const claudeResult = await callClaudeSentinel({
-      currentChunk,
-      fullTranscript,
-      previousRiskScore: peakScoreRef.current > 0
-        ? Math.max(Math.round(peakScoreRef.current * 0.85), localAnalysis.compositeScore)
-        : localAnalysis.compositeScore,
-      peakRiskScore: peakScoreRef.current,
-      batchIndex: batchCountRef.current - 1,
-      deepfakeConfidence: deepfakeRef.current,
-      acousticStress: acousticStressRef.current,
-      spamReportCount: spamRecord?.report_count ?? 0,
-      callerNumber,
-      callDirection: direction,
-      durationSeconds: durationRef.current,
-    });
+    // Core first. Claude only if the sidecar did not score this window.
+    const coreEvent = await detector.analyzeChunk(currentChunk, durationRef.current);
+    const claudeResult = (coreEvent || detector.statusRef.current !== 'off')
+      ? null
+      : await callClaudeSentinel({
+          currentChunk,
+          fullTranscript,
+          previousRiskScore: peakScoreRef.current > 0
+            ? Math.max(Math.round(peakScoreRef.current * 0.85), localAnalysis.compositeScore)
+            : localAnalysis.compositeScore,
+          peakRiskScore: peakScoreRef.current,
+          batchIndex: batchCountRef.current - 1,
+          deepfakeConfidence: deepfakeRef.current,
+          acousticStress: acousticStressRef.current,
+          spamReportCount: spamRecord?.report_count ?? 0,
+          callerNumber,
+          callDirection: direction,
+          durationSeconds: durationRef.current,
+        });
 
     // ── Merge Claude result with local SENTINEL + acoustic ──
     let displayScore: number;
@@ -494,12 +555,11 @@ export default function LiveCallScreen() {
     let contentVerdict: ContentVerdict;
     let contentVerdictScore: number;
     let poweredByClaude: boolean;
+    let poweredByCore = false;
     let claudeReasoning: string | undefined;
 
     if (claudeResult && typeof claudeResult.riskScore === 'number') {
-      // Claude responded — primary source
-      const ratchetFloor = Math.round(peakScoreRef.current * 0.75);
-      displayScore = Math.max(claudeResult.riskScore as number, ratchetFloor);
+      displayScore = claudeResult.riskScore as number;
       flags = [...new Set([
         ...((claudeResult.flags as string[]) || []),
         ...acousticFlags,
@@ -515,9 +575,7 @@ export default function LiveCallScreen() {
       poweredByClaude = true;
       claudeReasoning = (claudeResult.reasoning as string) || undefined;
     } else {
-      // Fallback to local SENTINEL engine
-      const ratchetFloor = Math.round(peakScoreRef.current * 0.75);
-      displayScore = Math.max(localAnalysis.compositeScore, ratchetFloor);
+      displayScore = localAnalysis.compositeScore;
       flags = [...new Set([...localAnalysis.allFlags, ...acousticFlags])];
       factChecks = localAnalysis.allFactChecks;
       scamType = localAnalysis.scamType;
@@ -526,13 +584,78 @@ export default function LiveCallScreen() {
       callerType = 'unknown';
       callerTypeConfidence = 0;
       contentVerdict = displayScore >= 65 ? 'scam' : displayScore >= 35 ? 'suspicious'
-        : batchCountRef.current >= 2 ? 'genuine' : 'insufficient';
-      contentVerdictScore = Math.min(95, displayScore + batchCountRef.current * 5);
+        : (newWords >= 12 || batchCountRef.current >= 2) ? 'genuine' : 'insufficient';
+      contentVerdictScore = contentVerdict === 'genuine'
+        ? Math.max(60, 100 - displayScore)
+        : Math.min(95, Math.max(displayScore, 35));
       poweredByClaude = false;
       claudeReasoning = undefined;
     }
 
-    // Update peak ratchet anchor
+    if (callerType === 'unknown' || callerTypeConfidence < 40) {
+      const inferred = inferVoiceFromAcoustics(
+        deepfakeRef.current,
+        hasMicRef.current,
+        batchCountRef.current,
+        newWords,
+      );
+      callerType = inferred.callerType;
+      callerTypeConfidence = inferred.callerTypeConfidence;
+    }
+
+    if (coreEvent && typeof coreEvent.risk === 'number') {
+      displayScore = Math.round(Math.max(0, Math.min(1, coreEvent.risk)) * 100);
+      if (typeof coreEvent.synth === 'number') {
+        if (coreEvent.synth >= 0.5) {
+          callerType = 'ai_synthetic';
+          callerTypeConfidence = Math.round(coreEvent.synth * 100);
+        } else {
+          callerType = 'human';
+          callerTypeConfidence = Math.round((1 - coreEvent.synth) * 100);
+        }
+      }
+      if (typeof coreEvent.fraud === 'number') {
+        contentVerdict = coreEvent.fraud >= 0.62 || coreEvent.risk >= 0.62
+          ? 'scam'
+          : coreEvent.fraud >= 0.35 || coreEvent.risk >= 0.35
+          ? 'suspicious'
+          : contentVerdict;
+        contentVerdictScore = Math.round(Math.max(coreEvent.fraud, coreEvent.risk) * 100);
+      }
+      if (coreEvent.stage) flags = [...new Set([...flags, coreEvent.stage])];
+      confidenceLabel = `shieldcall-core · ${coreEvent.regime || coreEvent.tier || coreEvent.action}`;
+      if (coreEvent.explanation) claudeReasoning = coreEvent.explanation;
+      poweredByClaude = false;
+      poweredByCore = true;
+    }
+
+    const prev = resultRef.current;
+    const n = batchCountRef.current;
+    const incomingScore = displayScore;
+    displayScore = n <= 1 ? incomingScore : blendToward(prev.score, incomingScore, n);
+    const delta = displayScore - prev.score;
+    trajectoryLabel = n <= 1
+      ? 'stable'
+      : delta >= 6 ? 'rising' : delta <= -6 ? 'falling' : 'stable';
+
+    const blendedVoice = blendVoice(
+      prev.callerType,
+      prev.callerTypeConfidence,
+      callerType,
+      callerTypeConfidence,
+      n,
+    );
+    callerType = blendedVoice.callerType;
+    callerTypeConfidence = blendedVoice.callerTypeConfidence;
+
+    contentVerdict = displayScore >= 65 ? 'scam' : displayScore >= 35 ? 'suspicious'
+      : (wordsAnalyzedRef.current >= 12 || n >= 2) ? 'genuine' : 'insufficient';
+    contentVerdictScore = contentVerdict === 'genuine'
+      ? Math.max(58, 100 - displayScore)
+      : contentVerdict === 'insufficient'
+      ? Math.min(40, 20 + n * 5)
+      : Math.min(95, Math.max(displayScore, 40));
+
     if (displayScore > peakScoreRef.current) peakScoreRef.current = displayScore;
     const displayLevel: ThreatLevel = displayScore >= 65 ? 'danger' : displayScore >= 30 ? 'warning' : 'safe';
 
@@ -556,13 +679,40 @@ export default function LiveCallScreen() {
       peakScore: peakScoreRef.current,
       lastUpdated: Date.now(),
       poweredByClaude,
+      poweredByCore,
       claudeReasoning,
     };
 
     // Record per-window score for timeline chart
     threatTimelineRef.current.push({ time: durationRef.current, score: displayScore });
 
+    resultRef.current = newResult;
     setResult(newResult);
+
+    setLiveCard({
+      id: `live-${batchCountRef.current}-${Date.now()}`,
+      chunkIndex: batchCountRef.current,
+      chunkText: currentChunk.trim(),
+      atSeconds: durationRef.current,
+      score: displayScore,
+      level: displayLevel,
+      flags,
+      scamType,
+      callerType,
+      callerTypeConfidence,
+      contentVerdict,
+      contentVerdictScore,
+      voiceLikelihoodLabel: voiceLikelihoodLabel(callerType, callerTypeConfidence),
+      contentLikelihoodLabel: contentLikelihoodLabel(contentVerdict, contentVerdictScore),
+      confidenceLabel,
+      poweredByClaude,
+      poweredByCore,
+      claudeReasoning,
+      wordsAnalyzed: wordsAnalyzedRef.current,
+      peakScore: peakScoreRef.current,
+      trajectoryLabel,
+    });
+
     isAnalyzingRef.current = false;
     setIsAnalyzing(false);
 
@@ -572,7 +722,7 @@ export default function LiveCallScreen() {
       factCheckTimer.current && clearTimeout(factCheckTimer.current);
       factCheckTimer.current = setTimeout(() => setShowFactCheck(false), 9000);
     }
-  }, [acousticFlags, spamChecked, spamRecord, callerNumber, direction]);
+  }, [acousticFlags, spamChecked, spamRecord, callerNumber, direction, detector.analyzeChunk]);
 
   // ── Handle new speech segment ─────────────────────────────────────────────
   const handleSegment = useCallback((text: string, _speaker: 'A' | 'B') => {
@@ -590,7 +740,7 @@ export default function LiveCallScreen() {
   // 10-second clock-based batch timer — guarantees updates even during continuous speech
   useEffect(() => {
     batchTimerRef.current = setInterval(() => {
-      if (allSegmentsRef.current.length > 0 || batchCountRef.current > 0) {
+      if (batchBufferRef.current.length > 0) {
         runBatchAnalysis();
       }
     }, 10000);
@@ -606,7 +756,28 @@ export default function LiveCallScreen() {
   useEffect(() => {
     acousticStressRef.current = acousticStress;
     deepfakeRef.current = deepfakeConfidence;
-  }, [acousticStress, deepfakeConfidence]);
+    hasMicRef.current = hasMic;
+  }, [acousticStress, deepfakeConfidence, hasMic]);
+
+  // Native STT already owns the microphone — reuse its acoustic stream
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const native = transcription as typeof transcription & {
+      amplitudeHistory?: number[];
+      acousticStress?: number;
+      deepfakeConfidence?: number;
+    };
+    if (!transcription.isListening) return;
+    setHasMic(true);
+    if (native.amplitudeHistory) setAmplitudeHistory(native.amplitudeHistory);
+    if (typeof native.acousticStress === 'number') setAcousticStress(native.acousticStress);
+    if (typeof native.deepfakeConfidence === 'number') setDeepfakeConfidence(native.deepfakeConfidence);
+  }, [
+    transcription.isListening,
+    (transcription as any).amplitudeHistory,
+    (transcription as any).acousticStress,
+    (transcription as any).deepfakeConfidence,
+  ]);
 
   useEffect(() => {
     durationRef.current = duration;
@@ -616,6 +787,8 @@ export default function LiveCallScreen() {
   useEffect(() => {
     sentinelRef.current.reset();
     peakScoreRef.current = 0;
+    resultRef.current = buildEmptyResult();
+    setLiveCard(null);
     durationTimerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
 
     const listenPulse = Animated.loop(Animated.sequence([
@@ -632,15 +805,22 @@ export default function LiveCallScreen() {
     };
     pulsate();
 
-    transcription.start();
+    const startTimer = setTimeout(() => {
+      transcription.start();
+    }, 280);
+    detector.open().catch(() => {});
 
     (async () => {
-      if (!settings.deepfakeDetect) {
-        // Deepfake detection disabled — skip AcousticSentinel entirely
+      if (Platform.OS !== 'web') {
+        // Same-phone path: native STT holds the mic so we do not start a second recorder.
+        setHasMic(true);
+        hasMicRef.current = true;
         return;
       }
+      if (!settings.deepfakeDetect) return;
       const granted = await acousticRef.current.requestPermission();
       setHasMic(granted);
+      hasMicRef.current = granted;
       if (granted) {
         await acousticRef.current.startMonitoring((snap: AcousticSnapshot) => {
           setAmplitudeHistory(prev => [...prev.slice(-31), snap.normalizedAmplitude]);
@@ -656,20 +836,24 @@ export default function LiveCallScreen() {
       batchTimerRef.current && clearInterval(batchTimerRef.current);
       pauseTimerRef.current && clearTimeout(pauseTimerRef.current);
       factCheckTimer.current && clearTimeout(factCheckTimer.current);
+      clearTimeout(startTimer);
       transcription.stop();
       acousticRef.current.stopMonitoring();
+      detector.close().catch(() => {});
       listenPulse.stop();
     };
   }, []);
 
-  useEffect(() => {
-    if (transcription.segments.length > 0) {
-      setTimeout(() => transcriptRef.current?.scrollToEnd({ animated: true }), 80);
-    }
-  }, [transcription.segments.length]);
-
   const threatColor = SentinelEngine.getThreatColor(result.level);
-  const isWebSTT = Platform.OS === 'web' && transcription.isSupported;
+  const isLiveSTT = transcription.isListening || (Platform.OS === 'web' && transcription.isSupported);
+
+  useEffect(() => {
+    if (transcription.wordCount > 0 || showManual) return;
+    const t = setTimeout(() => {
+      if (transcription.wordCount === 0) setShowManual(true);
+    }, 14000);
+    return () => clearTimeout(t);
+  }, [transcription.wordCount, showManual]);
 
   const handleManualSubmit = useCallback(() => {
     if (!manualInput.trim()) return;
@@ -681,6 +865,7 @@ export default function LiveCallScreen() {
   const handleEnd = async () => {
     transcription.stop();
     await acousticRef.current.stopMonitoring();
+    await detector.close();
     const finalAnalysis = sentinelRef.current.analyzeConversation();
     const transcriptData = transcription.segments
       .filter(s => s.isFinal)
@@ -758,7 +943,13 @@ export default function LiveCallScreen() {
               <Animated.View style={[styles.listenDot, { opacity: listenDotAnim, backgroundColor: isAnalyzing ? Colors.warning : Colors.primary }]} />
               <MaterialIcons name="auto-awesome" size={11} color={isAnalyzing ? Colors.warning : Colors.primary} />
               <Text style={[styles.sentinelLabel, { color: isAnalyzing ? Colors.warning : Colors.primary }]}>
-                {isAnalyzing ? 'CLAUDE ANALYZING' : isWebSTT && transcription.isListening ? 'CLAUDE SENTINEL™' : 'SENTINEL™ ACTIVE'}
+                {isAnalyzing
+                  ? 'ANALYZING CHUNK'
+                  : detector.status === 'on'
+                  ? 'CORE LIVE'
+                  : detector.status === 'lost'
+                  ? 'CORE LOST · LOCAL'
+                  : 'CORE OFF · LOCAL'}
               </Text>
             </View>
             <View style={[styles.directionBadge, direction === 'outbound' ? styles.outboundBadge : styles.inboundBadge]}>
@@ -798,8 +989,7 @@ export default function LiveCallScreen() {
           </View>
         </View>
 
-        {/* Result Card */}
-        <ResultCard result={result} isAnalyzing={isAnalyzing} />
+        <LiveResultCard analysis={liveCard} isAnalyzing={isAnalyzing} />
 
         {/* Fact Check Banner */}
         {showFactCheck && (
@@ -812,90 +1002,24 @@ export default function LiveCallScreen() {
 
         {/* Listen Status */}
         <View style={[styles.listeningBanner, {
-          backgroundColor: isWebSTT ? (transcription.isListening ? Colors.primaryGlow : Colors.bgCard) : Colors.bgCard,
-          borderColor: isWebSTT ? (transcription.isListening ? Colors.primary + '44' : Colors.border) : Colors.border,
+          backgroundColor: transcription.isListening ? Colors.primaryGlow : Colors.bgCard,
+          borderColor: transcription.isListening ? Colors.primary + '44' : Colors.border,
         }]}>
-          {isWebSTT ? (
-            <>
-              <Animated.View style={[styles.listenPulse, {
-                backgroundColor: transcription.isListening ? Colors.primary : Colors.textMuted,
-                opacity: listenDotAnim,
-              }]} />
-              <Text style={[styles.listeningLabel, { color: transcription.isListening ? Colors.primary : Colors.textMuted }]}>
-                {transcription.isListening ? 'Claude SENTINEL™ · 10s AI batches · real-time analysis' : 'Starting...'}
-              </Text>
-              <Text style={styles.wordCountText}>{transcription.wordCount}w · B{result.batchCount}</Text>
-            </>
-          ) : (
-            <>
-              <MaterialIcons name="graphic-eq" size={13} color={Colors.primary} />
-              <Text style={[styles.listeningLabel, { color: Colors.primary }]}>
-                Claude SENTINEL™ · acoustic monitoring · {result.batchCount} batches
-              </Text>
-            </>
-          )}
+          <Animated.View style={[styles.listenPulse, {
+            backgroundColor: transcription.isListening ? Colors.primary : Colors.textMuted,
+            opacity: listenDotAnim,
+          }]} />
+          <Text style={[styles.listeningLabel, { color: transcription.isListening ? Colors.primary : Colors.textMuted }]} numberOfLines={2}>
+            {transcription.interimText
+              ? transcription.interimText
+              : detector.status === 'on'
+              ? `Core scoring · ${detector.endpoint.replace('http://', '')}`
+              : transcription.isListening
+              ? 'Same phone · core unreachable · scoring on-device'
+              : 'Starting live analysis on this phone...'}
+          </Text>
+          <Text style={styles.wordCountText}>{transcription.wordCount}w · B{result.batchCount}</Text>
         </View>
-
-        {/* Transcript */}
-        <ScrollView
-          ref={transcriptRef}
-          style={styles.transcript}
-          contentContainerStyle={styles.transcriptContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {transcription.segments.length === 0 && (
-            <View style={styles.emptyTranscript}>
-              {isWebSTT ? (
-                <>
-                  <View style={{ position: 'relative', width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-                    <MaterialIcons name="hearing" size={32} color={Colors.primary} />
-                    <Animated.View style={{
-                      position: 'absolute', bottom: 1, right: 1,
-                      width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.primary,
-                      borderWidth: 2, borderColor: Colors.bgCard, opacity: listenDotAnim,
-                    }} />
-                  </View>
-                  <Text style={styles.emptyTitle}>Claude SENTINEL™ is listening</Text>
-                  <Text style={styles.emptySubtitle}>
-                    Claude AI analyzes every 10-second batch.{'\n'}
-                    Risk score never drops below 75% of historical peak.
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <MaterialIcons name="graphic-eq" size={32} color={Colors.primary} />
-                  <Text style={styles.emptyTitle}>Claude SENTINEL™ is listening</Text>
-                  <Text style={styles.emptySubtitle}>
-                    Claude AI analyzes audio in real-time.{'\n'}
-                    Score updates every 10 seconds automatically.
-                  </Text>
-                </>
-              )}
-            </View>
-          )}
-
-          {transcription.segments.map(seg => (
-            <View key={seg.id} style={[styles.transcriptLine, {
-              borderLeftColor: seg.analyzed
-                ? ((seg.threatScore ?? 0) >= 65 ? Colors.danger : (seg.threatScore ?? 0) >= 30 ? Colors.warning : Colors.safe)
-                : Colors.border + '88',
-              borderLeftWidth: 2.5,
-            }]}>
-              <SpeakerLabel speaker={seg.speaker} direction={direction} />
-              <Text style={styles.transcriptText}>{seg.text}</Text>
-              <Text style={styles.segTime}>
-                {new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </Text>
-            </View>
-          ))}
-
-          {transcription.interimText ? (
-            <View style={[styles.transcriptLine, styles.interimLine]}>
-              <Text style={styles.interimSpeakerLabel}>LISTENING...</Text>
-              <Text style={styles.interimLineText}>{transcription.interimText}</Text>
-            </View>
-          ) : null}
-        </ScrollView>
 
         {/* Optional note input — accessible via voice */}
         {showManual && (
@@ -904,7 +1028,7 @@ export default function LiveCallScreen() {
               style={styles.manualInput}
               value={manualInput}
               onChangeText={setManualInput}
-              placeholder="Add a note or correction..."
+              placeholder="Add a phrase you heard on this call..."
               placeholderTextColor={Colors.textMuted}
               returnKeyType="send"
               onSubmitEditing={handleManualSubmit}
@@ -1015,18 +1139,6 @@ const styles = StyleSheet.create({
   listenPulse: { width: 7, height: 7, borderRadius: 3.5 },
   listeningLabel: { flex: 1, fontSize: 10, fontWeight: FontWeight.semibold, lineHeight: 14 },
   wordCountText: { fontSize: 9, color: Colors.textMuted },
-
-  transcript: { flex: 1, marginHorizontal: Spacing.md, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.xs },
-  transcriptContent: { padding: Spacing.sm, gap: Spacing.sm },
-  emptyTranscript: { alignItems: 'center', paddingTop: Spacing.lg, gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingBottom: Spacing.lg },
-  emptyTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center' },
-  emptySubtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
-  transcriptLine: { backgroundColor: Colors.bgSurface, borderRadius: Radius.sm, padding: Spacing.sm, borderLeftWidth: 2.5, gap: 3 },
-  interimLine: { borderLeftColor: Colors.primary + '55', backgroundColor: Colors.primaryGlow + '33', opacity: 0.85 },
-  interimSpeakerLabel: { fontSize: 9, fontWeight: '900', color: Colors.primary, letterSpacing: 0.8 },
-  interimLineText: { fontSize: FontSize.sm, color: Colors.textSecondary, fontStyle: 'italic', lineHeight: 18 },
-  transcriptText: { fontSize: FontSize.sm, color: Colors.text, lineHeight: 19 },
-  segTime: { fontSize: 9, color: Colors.textMuted, alignSelf: 'flex-end' },
 
   manualInputRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderTopWidth: 1, borderTopColor: Colors.border },
   manualInput: { flex: 1, backgroundColor: Colors.bgCard, borderRadius: Radius.md, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, fontSize: FontSize.sm, color: Colors.text, borderWidth: 1.5, borderColor: Colors.borderStrong, includeFontPadding: false },

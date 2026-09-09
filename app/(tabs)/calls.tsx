@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput,
-  ActivityIndicator, Animated, Easing,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -38,58 +38,6 @@ function formatDur(s: number) {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-// ─── Animation helpers ────────────────────────────────────────────────────────
-function FadeInView({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: any }) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(14)).current;
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 320, delay, useNativeDriver: true, easing: Easing.out(Easing.cubic) }),
-      Animated.timing(translateY, { toValue: 0, duration: 320, delay, useNativeDriver: true, easing: Easing.out(Easing.cubic) }),
-    ]).start();
-  }, []);
-  return <Animated.View style={[style, { opacity, transform: [{ translateY }] }]}>{children}</Animated.View>;
-}
-
-function PulseDot({ color, size = 8 }: { color: string; size?: number }) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const opacity = useRef(new Animated.Value(0.8)).current;
-  useEffect(() => {
-    Animated.loop(Animated.sequence([
-      Animated.parallel([
-        Animated.timing(scale, { toValue: 1.5, duration: 700, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.2, duration: 700, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.timing(scale, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.8, duration: 700, useNativeDriver: true }),
-      ]),
-    ])).start();
-  }, []);
-  return (
-    <Animated.View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, opacity, transform: [{ scale }] }} />
-  );
-}
-
-// Animated threat score ring
-function ThreatRing({ score, color }: { score: number; color: string }) {
-  const anim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.spring(anim, { toValue: score, tension: 60, friction: 10, useNativeDriver: false }).start();
-  }, [score]);
-  return (
-    <View style={[styles.threatIndicator, { borderColor: color + '55', backgroundColor: color + '18' }]}>
-      <Text style={[styles.threatScore, { color }]}>{score}</Text>
-    </View>
-  );
-}
-
-const DEMO_INCOMING = [
-  { label: 'IRS Scam', number: '+1 (202) 555-0147', name: 'Unknown Caller' },
-  { label: "Doctor's Office", number: '+1 (415) 555-0230', name: 'Dr. Nguyen' },
-  { label: 'Unknown VoIP', number: '+1 (800) 555-0982', name: 'Unknown Caller' },
-];
-
 export default function CallsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -98,7 +46,6 @@ export default function CallsScreen() {
   const [filter, setFilter] = useState<Filter>('all');
   const [direction, setDirection] = useState<Direction>('all');
   const [search, setSearch] = useState('');
-  const [showIncomingDemo, setShowIncomingDemo] = useState(false);
 
   const filtered = calls.filter(c => {
     const matchFilter = filter === 'all' || c.threat_level === filter;
@@ -110,109 +57,73 @@ export default function CallsScreen() {
     return matchFilter && matchDir && matchSearch;
   });
 
-  const renderItem = ({ item, index }: { item: CallRecord; index: number }) => {
+  const renderItem = ({ item }: { item: CallRecord }) => {
     const color = THREAT_COLORS[item.threat_level];
     return (
-      <FadeInView delay={index * 50}>
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => router.push({ pathname: '/call-detail', params: { id: item.id } })}
-          activeOpacity={0.8}
-        >
-          <View style={styles.cardLeft}>
-            <View style={[styles.avatar, { borderColor: color }]}>
-              <MaterialIcons
-                name={item.ghost_handled ? 'hearing' : item.threat_level === 'danger' ? 'warning' : 'person'}
-                size={22} color={color}
-              />
-            </View>
-            <View style={[styles.dirTag, item.direction === 'outbound' ? styles.outTag : styles.inTag]}>
-              <MaterialIcons
-                name={item.direction === 'outbound' ? 'call-made' : 'call-received'}
-                size={10}
-                color={item.direction === 'outbound' ? Colors.primary : Colors.safe}
-              />
-            </View>
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => router.push({ pathname: '/call-detail', params: { id: item.id } })}
+        activeOpacity={0.8}
+      >
+        <View style={styles.cardLeft}>
+          <View style={[styles.avatar, { borderColor: color }]}>
+            <MaterialIcons
+              name={item.ghost_handled ? 'hearing' : item.threat_level === 'danger' ? 'warning' : 'person'}
+              size={22} color={color}
+            />
           </View>
+          <View style={[styles.dirTag, item.direction === 'outbound' ? styles.outTag : styles.inTag]}>
+            <MaterialIcons
+              name={item.direction === 'outbound' ? 'call-made' : 'call-received'}
+              size={10}
+              color={item.direction === 'outbound' ? Colors.primary : Colors.safe}
+            />
+          </View>
+        </View>
 
-          <View style={styles.cardBody}>
-            <View style={styles.cardRow}>
-              <Text style={styles.callerName} numberOfLines={1}>{item.caller_name}</Text>
-              <Text style={styles.timeText}>{formatTime(item.started_at)}</Text>
-            </View>
-            <Text style={styles.callerNumber}>{item.caller_number}</Text>
-            <View style={styles.cardTagRow}>
-              {item.ghost_handled && (
-                <View style={styles.ghostTag}>
-                  <MaterialIcons name="hearing" size={10} color={Colors.primary} />
-                  <Text style={styles.ghostTagText}>Ghost</Text>
-                </View>
-              )}
-              {item.scam_type ? (
-                <View style={[styles.scamTag, { backgroundColor: color + '22', borderColor: color + '55' }]}>
-                  <Text style={[styles.scamTagText, { color }]}>{item.scam_type}</Text>
-                </View>
-              ) : null}
-              <Text style={styles.durationText}>{formatDur(item.duration_seconds)}</Text>
-            </View>
-            {item.summary ? (
-              <Text style={styles.summaryText} numberOfLines={2}>{item.summary}</Text>
-            ) : null}
+        <View style={styles.cardBody}>
+          <View style={styles.cardRow}>
+            <Text style={styles.callerName} numberOfLines={1}>{item.caller_name}</Text>
+            <Text style={styles.timeText}>{formatTime(item.started_at)}</Text>
           </View>
-          <ThreatRing score={item.threat_score} color={color} />
-        </TouchableOpacity>
-      </FadeInView>
+          <Text style={styles.callerNumber}>{item.caller_number}</Text>
+          <View style={styles.cardTagRow}>
+            {item.ghost_handled && (
+              <View style={styles.ghostTag}>
+                <MaterialIcons name="hearing" size={10} color={Colors.primary} />
+                <Text style={styles.ghostTagText}>Ghost</Text>
+              </View>
+            )}
+            {item.scam_type ? (
+              <View style={[styles.scamTag, { backgroundColor: color + '22', borderColor: color + '55' }]}>
+                <Text style={[styles.scamTagText, { color }]}>{item.scam_type}</Text>
+              </View>
+            ) : null}
+            <Text style={styles.durationText}>{formatDur(item.duration_seconds)}</Text>
+          </View>
+          {item.summary ? (
+            <Text style={styles.summaryText} numberOfLines={2}>{item.summary}</Text>
+          ) : null}
+        </View>
+        <View style={[styles.threatIndicator, { backgroundColor: color }]}>
+          <Text style={styles.threatScore}>{item.threat_score}</Text>
+        </View>
+      </TouchableOpacity>
     );
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 16 }]}>
       {/* Header */}
-      <FadeInView style={styles.header}>
+      <View style={styles.header}>
         <Text style={styles.title}>Call History</Text>
-        <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.refreshBtn} onPress={refresh} activeOpacity={0.8}>
-            <MaterialIcons name="refresh" size={16} color={Colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.demoBtn}
-            onPress={() => setShowIncomingDemo(s => !s)}
-            activeOpacity={0.8}
-          >
-            <PulseDot color={Colors.safe} size={7} />
-            <Text style={styles.demoBtnText}>Simulate Incoming</Text>
-          </TouchableOpacity>
-        </View>
-      </FadeInView>
-
-      {/* Incoming Call Demo Panel */}
-      {showIncomingDemo && (
-        <FadeInView style={styles.demoPanel}>
-          <Text style={styles.demoPanelTitle}>Simulate an Incoming Call</Text>
-          <View style={styles.demoScenarios}>
-            {DEMO_INCOMING.map(s => (
-              <TouchableOpacity
-                key={s.number}
-                style={styles.demoScenario}
-                onPress={() => {
-                  setShowIncomingDemo(false);
-                  router.push({
-                    pathname: '/incoming-call',
-                    params: { callerNumber: s.number, callerName: s.name },
-                  });
-                }}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons name="call" size={14} color={Colors.primary} />
-                <Text style={styles.demoScenarioLabel}>{s.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </FadeInView>
-      )}
+        <TouchableOpacity style={styles.refreshBtn} onPress={refresh} activeOpacity={0.8}>
+          <MaterialIcons name="refresh" size={16} color={Colors.primary} />
+        </TouchableOpacity>
+      </View>
 
       {/* Search */}
-      <FadeInView delay={60} style={styles.searchWrap}>
+      <View style={styles.searchWrap}>
         <MaterialIcons name="search" size={20} color={Colors.textMuted} />
         <TextInput
           style={styles.searchInput}
@@ -226,10 +137,10 @@ export default function CallsScreen() {
             <MaterialIcons name="close" size={18} color={Colors.textMuted} />
           </TouchableOpacity>
         )}
-      </FadeInView>
+      </View>
 
       {/* Filters */}
-      <FadeInView delay={100} style={styles.filtersBlock}>
+      <View style={styles.filtersBlock}>
         <View style={styles.filterRow}>
           {(['all', 'inbound', 'outbound'] as Direction[]).map(d => (
             <TouchableOpacity
@@ -263,7 +174,7 @@ export default function CallsScreen() {
             </TouchableOpacity>
           ))}
         </View>
-      </FadeInView>
+      </View>
 
       {loading ? (
         <View style={styles.loadingWrap}>
@@ -323,31 +234,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md, marginBottom: Spacing.md,
   },
   title: { fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.text },
-  headerRight: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
   refreshBtn: {
     width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bgCard,
     alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border,
   },
-  demoBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.safeGlow, borderRadius: Radius.full,
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderWidth: 1, borderColor: Colors.safe + '44',
-  },
-  demoBtnText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.safe },
-
-  demoPanel: {
-    marginHorizontal: Spacing.md, backgroundColor: Colors.bgCard, borderRadius: Radius.lg,
-    padding: Spacing.md, borderWidth: 1, borderColor: Colors.borderStrong, marginBottom: Spacing.sm, gap: Spacing.sm,
-  },
-  demoPanelTitle: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.text },
-  demoScenarios: { flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap' },
-  demoScenario: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.primaryGlow, borderRadius: Radius.full,
-    paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: Colors.border,
-  },
-  demoScenarioLabel: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.primary },
 
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
@@ -412,10 +302,10 @@ const styles = StyleSheet.create({
   durationText: { fontSize: FontSize.xs, color: Colors.textMuted },
   summaryText: { fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 18, marginTop: 2 },
   threatIndicator: {
-    width: 40, height: 40, borderRadius: 20, borderWidth: 2,
-    alignItems: 'center', justifyContent: 'center', alignSelf: 'center',
+    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+    alignSelf: 'center',
   },
-  threatScore: { fontSize: FontSize.xs, fontWeight: FontWeight.extrabold },
+  threatScore: { fontSize: FontSize.xs, fontWeight: FontWeight.extrabold, color: '#fff' },
   empty: { alignItems: 'center', paddingTop: 60, gap: Spacing.sm },
   emptyText: { fontSize: FontSize.md, color: Colors.textMuted, fontWeight: FontWeight.semibold },
   emptySubText: { fontSize: FontSize.sm, color: Colors.textMuted, textAlign: 'center', maxWidth: 260 },
