@@ -218,21 +218,3 @@ export function clearContactsCache(): void {
   cachedContacts = null;
   cacheTimestamp = 0;
 }
-
-// ── Fallback mock contacts (used when permissions denied or on web) ────────────
-function getFallbackContacts(): Contact[] {
-  return FALLBACK_CONTACTS;
-}
-
-function findFallbackByNumber(number: string): Contact | null {
-  const digits = number.replace(/\D/g, '');
-  const last7 = digits.slice(-7);
-  return FALLBACK_CONTACTS.find(c => c.number.replace(/\D/g, '').slice(-7) === last7) ?? null;
-}
-
-const FALLBACK_CONTACTS: Contact[] = [
-  { id: 'f1', name: 'Mom', firstName: 'Mom', lastName: '', number: '+1 (628) 555-0041', relationship: 'family', avatarColor: '#00C896', isFavorite: true, shieldScore: 100 },
-  { id: 'f2', name: 'Dr. Nguyen', firstName: 'Dr.', lastName: 'Nguyen', number: '+1 (415) 555-0230', org: 'Pacific Medical Group', relationship: 'medical', avatarColor: '#00B4D8', isFavorite: false, shieldScore: 98 },
-  { id: 'f3', name: 'Dad', firstName: 'Dad', lastName: '', number: '+1 (415) 555-0088', relationship: 'family', avatarColor: '#00C896', isFavorite: true, shieldScore: 100 },
-  { id: 'f4', name: 'Chase Bank', firstName: 'Chase', lastName: 'Bank', number: '+1 (800) 555-0432', org: 'JPMorgan Chase', relationship: 'service', avatarColor: '#1A5FFF', isFavorite: false, shieldScore: 92 },
-];
