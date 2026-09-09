@@ -6,7 +6,6 @@ import { useApp } from '../contexts/AppContext';
 import { Colors } from '../constants/theme';
 
 export default function IndexScreen() {
-  // Auth still initializes (session restore, lab tester). It must not gate Protect.
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { isOnboarded, isReady } = useApp();
   const router = useRouter();
@@ -15,7 +14,7 @@ export default function IndexScreen() {
     if (authLoading || !isReady) return;
 
     const timer = setTimeout(() => {
-      if (isOnboarded) {
+      if (isAuthenticated || isOnboarded) {
         router.replace('/(tabs)');
       } else {
         router.replace('/onboarding');

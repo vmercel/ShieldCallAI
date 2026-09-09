@@ -57,9 +57,11 @@ export const callRecordsService = {
   },
 
   async insert(record: InsertCallRecord): Promise<{ data: CallRecord | null; error: string | null }> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { data: null, error: 'Sign in to save this call' };
     const { data, error } = await supabase
       .from('call_records')
-      .insert(record)
+      .insert({ ...record, user_id: user.id })
       .select()
       .single();
 

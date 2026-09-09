@@ -11,8 +11,11 @@
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "extra": {
-      "privacyPolicyUrl": "https://github.com/vmercel/CallShield/blob/main/public/privacy.html",
-      "termsOfServiceUrl": "https://github.com/vmercel/CallShield/blob/main/public/terms.html"
+      "privacyPolicyUrl": "https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/privacy",
+      "termsOfServiceUrl": "https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/terms",
+      "supportUrl": "https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/support",
+      "supabaseUrl": "https://cnrgrivqmuivxpnstaom.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNucmdyaXZxbXVpdnhwbnN0YW9tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjg4NDYsImV4cCI6MjA5MzY0NDg0Nn0.gyRbytDh1mWItvJ6sb97m0hsVUrmQTF7nzLVHeNZOKY"
     },
     "ios": {
       "supportsTablet": false,
@@ -27,19 +30,50 @@
             "NSPrivacyCollectedDataTypePurposes": [
               "NSPrivacyCollectedDataTypePurposeAppFunctionality"
             ]
+          },
+          {
+            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeEmailAddress",
+            "NSPrivacyCollectedDataTypeLinked": true,
+            "NSPrivacyCollectedDataTypeTracking": false,
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          },
+          {
+            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeName",
+            "NSPrivacyCollectedDataTypeLinked": true,
+            "NSPrivacyCollectedDataTypeTracking": false,
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          },
+          {
+            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypePhoneNumber",
+            "NSPrivacyCollectedDataTypeLinked": true,
+            "NSPrivacyCollectedDataTypeTracking": false,
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          },
+          {
+            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeContacts",
+            "NSPrivacyCollectedDataTypeLinked": false,
+            "NSPrivacyCollectedDataTypeTracking": false,
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
           }
         ]
       },
+      "buildNumber": "1",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "ShieldCall uses the microphone to analyze this phone's conversation while a call is ongoing so it can warn you about scams.",
         "NSContactsUsageDescription": "ShieldCall reads your contacts so you can search and call people from this phone, like a Phone app.",
         "LSApplicationQueriesSchemes": ["tel", "telprompt"],
-        "NSCameraUsageDescription": "ShieldCall does not use the camera in v1.",
         "NSSpeechRecognitionUsageDescription": "ShieldCall uses the operating system's speech recognition to transcribe this phone's live conversation so it can score scam language. Audio may be sent to Apple or Google as your OS dictates.",
         "NSLocalNetworkUsageDescription": "ShieldCall may connect to an optional detector sidecar on your local network. The app works if that sidecar is not running.",
         "NSAppTransportSecurity": {
-          "NSAllowsLocalNetworking": true,
-          "NSAllowsArbitraryLoads": true
+          "NSAllowsLocalNetworking": true
         },
         "UIBackgroundModes": ["voip", "audio", "fetch", "remote-notification", "processing"],
         "BGTaskSchedulerPermittedIdentifiers": ["com.shieldcallai.background-analysis"],
@@ -57,6 +91,7 @@
         "backgroundColor": "#060E1E"
       },
       "edgeToEdgeEnabled": true,
+      "versionCode": 1,
       "package": "com.shieldcallai.app",
       "intentFilters": [
         {

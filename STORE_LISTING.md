@@ -20,13 +20,13 @@ Subtitle character count: 27.
 
 ## URLs (paste into App Store Connect / Play Console)
 
-Host `public/privacy.html` and `public/terms.html` over HTTPS before submission. Until a custom domain is live, these GitHub URLs are HTTPS and match the files in this repo:
+Live HTTPS pages (Supabase Edge Functions on the callshield project):
 
 | Purpose | URL |
 | --- | --- |
-| Privacy Policy | https://github.com/vmercel/CallShield/blob/main/public/privacy.html |
-| Terms of Use (EULA) | https://github.com/vmercel/CallShield/blob/main/public/terms.html |
-| Support | https://github.com/vmercel/CallShield/issues |
+| Privacy Policy | https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/privacy |
+| Terms of Use (EULA) | https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/terms |
+| Support | https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/support |
 | Marketing (optional) | leave blank |
 
 In-app screens (expo-router): `/privacy` (`app/privacy.tsx`) and `/terms` (`app/terms.tsx`).
