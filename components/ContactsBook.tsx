@@ -4,7 +4,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Linking, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../constants/theme';
@@ -104,18 +104,13 @@ export function ContactsBook({
           {permission !== 'granted' && (
             <View style={styles.empty}>
               <MaterialIcons name="contacts" size={48} color={Colors.primary} />
-              <Text style={styles.emptyTitle}>Allow Contacts</Text>
+              <Text style={styles.emptyTitle}>Call by name</Text>
               <Text style={styles.emptyText}>
-                ShieldCall reads this phone's address book so you can say a name and dial, like a Phone app.
+                Tap Set up. iOS will ask for Contacts. That is the only step.
               </Text>
               <TouchableOpacity style={styles.permBtn} onPress={onAskPermission} activeOpacity={0.85}>
-                <Text style={styles.permBtnText}>Grant access</Text>
+                <Text style={styles.permBtnText}>Set up</Text>
               </TouchableOpacity>
-              {permission === 'denied' ? (
-                <TouchableOpacity style={styles.settingsBtn} onPress={() => Linking.openSettings()} activeOpacity={0.85}>
-                  <Text style={styles.settingsBtnText}>Open Settings</Text>
-                </TouchableOpacity>
-              ) : null}
             </View>
           )}
 

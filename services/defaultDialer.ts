@@ -1,16 +1,24 @@
 /**
- * Ask the OS to treat ShieldCall as the Phone app (Truecaller-style).
- * Android 10+: ROLE_DIALER. Older Android: CHANGE_DEFAULT_DIALER.
- * iOS: CallKit default-calling is a native binary setting; Expo Go cannot
- * become the system Phone app. We open Settings and tell the user.
+ * Phone-app setup. iOS has no default-dialer toggle, so we never dump
+ * the user into Settings as the first step. Android gets ROLE_DIALER.
  */
 import { Linking, Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 const ANDROID_PACKAGE = 'com.shieldcallai.app';
 
+export function hostAppLabel(): string {
+  return Constants.appOwnership === 'expo' ? 'Expo Go' : 'ShieldCall';
+}
+
+export function deniedSettingsHint(): string {
+  return `In Settings tap ${hostAppLabel()}, then turn on Contacts and Microphone. Come back here when that is done.`;
+}
+
 export async function promptDefaultDialer(): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
   try {
-    if (Platform.OS === 'android' && typeof (Linking as { sendIntent?: Function }).sendIntent === 'function') {
+    if (typeof (Linking as { sendIntent?: Function }).sendIntent === 'function') {
       const sendIntent = (Linking as { sendIntent: Function }).sendIntent;
       try {
         await sendIntent('android.app.role.action.REQUEST_ROLE', [
@@ -24,22 +32,17 @@ export async function promptDefaultDialer(): Promise<boolean> {
         return true;
       }
     }
-    await Linking.openSettings();
-    return true;
   } catch (e) {
     console.warn('promptDefaultDialer', e);
-    try {
-      await Linking.openSettings();
-      return true;
-    } catch {
-      return false;
-    }
   }
+  return false;
 }
 
-export function defaultDialerHelp(): string {
-  if (Platform.OS === 'android') {
-    return 'Set ShieldCall as the default Phone app so incoming and outgoing calls open here.';
+export async function openHostAppSettings(): Promise<boolean> {
+  try {
+    await Linking.openSettings();
+    return true;
+  } catch {
+    return false;
   }
-  return 'iOS only allows a CallKit app (a development or App Store build) to handle calls. Expo Go cannot be the system Phone app. Open Settings, then grant Contacts and Microphone to this app.';
 }
