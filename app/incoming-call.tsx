@@ -75,7 +75,7 @@ export default function IncomingCallScreen() {
     callUUID?: string;
   }>();
 
-  const callerNumber = params.callerNumber ?? '+1 (800) 555-0982';
+  const callerNumber = params.callerNumber ?? '';
   const callUUID = params.callUUID ?? null;
   const { settings } = useSettings();
   const { ghostModeEnabled, personaName } = useApp();
@@ -117,7 +117,7 @@ export default function IncomingCallScreen() {
       autoRoutedRef.current = true;
       setGhostPickingUp(true);
       timeouts.push(setTimeout(() => handleGhost(), 600));
-    } else if (ghostModeEnabled && !autoRoutedRef.current) {
+    } else if (ghostModeEnabled && callerNumber && !autoRoutedRef.current) {
       // Ghost Mode on: pick up and converse on the user's behalf
       autoRoutedRef.current = true;
       setGhostPickingUp(true);

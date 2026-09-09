@@ -55,20 +55,22 @@ async function loadDeviceContacts(): Promise<Contact[]> {
     return cachedContacts;
   }
 
-  if (Platform.OS === 'web') return getFallbackContacts();
+  if (Platform.OS === 'web') return [];
 
   try {
     const { status } = await ExpoContacts.getPermissionsAsync();
-    if (status !== 'granted') return getFallbackContacts();
+    if (status !== 'granted') return [];
 
-    const { data } = await ExpoContacts.getContactsAsync({
-      fields: [
-        ExpoContacts.Fields.FirstName,
-        ExpoContacts.Fields.LastName,
-        ExpoContacts.Fields.PhoneNumbers,
-        ExpoContacts.Fields.Company,
-      ],
-    });
+    const fields: any[] = [
+      ExpoContacts.Fields.FirstName,
+      ExpoContacts.Fields.LastName,
+      ExpoContacts.Fields.PhoneNumbers,
+      ExpoContacts.Fields.Company,
+    ];
+    const extra = (ExpoContacts.Fields as Record<string, any>).IsFavorite;
+    if (extra) fields.push(extra);
+
+    const { data } = await ExpoContacts.getContactsAsync({ fields });
 
     const contacts: Contact[] = data
       .filter(c => c.phoneNumbers && c.phoneNumbers.length > 0)
@@ -91,17 +93,34 @@ async function loadDeviceContacts(): Promise<Contact[]> {
           numbers: allNumbers.length > 1 ? allNumbers : undefined,
           org: c.company ?? undefined,
           avatarColor: colorForName(name),
-          isFavorite: false,
+          isFavorite: !!(c as { isFavorite?: boolean }).isFavorite,
         };
-      });
+      })
+      .sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite) || a.name.localeCompare(b.name));
 
     cachedContacts = contacts;
     cacheTimestamp = Date.now();
     return contacts;
   } catch (e) {
     console.warn('Failed to load device contacts:', e);
-    return getFallbackContacts();
+    return [];
   }
+}
+
+export async function ensureContactsPermission(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+  const current = await ExpoContacts.getPermissionsAsync();
+  let status = current.status;
+  if (status !== 'granted') {
+    const asked = await ExpoContacts.requestPermissionsAsync();
+    status = asked.status;
+  }
+  if (status === 'granted') {
+    clearContactsCache();
+    await loadDeviceContacts();
+    return true;
+  }
+  return false;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -148,18 +167,25 @@ export async function findContactByName(name: string): Promise<Contact | null> {
 
 // Sync versions for use where async isn't convenient (use cached data)
 export function findContactByNumberSync(number: string): Contact | null {
-  if (!cachedContacts) return findFallbackByNumber(number);
+  if (!cachedContacts || cachedContacts.length === 0) return null;
   const digits = number.replace(/\D/g, '');
   const last7 = digits.slice(-7);
   return cachedContacts.find(c => {
     const primary = c.number.replace(/\D/g, '');
     if (primary.slice(-7) === last7) return true;
     return c.numbers?.some(n => n.number.replace(/\D/g, '').slice(-7) === last7) ?? false;
-  }) ?? findFallbackByNumber(number);
+  }) ?? null;
+}
+
+export function getFavoritesSync(): Contact[] {
+  const all = cachedContacts ?? [];
+  const favs = all.filter(c => c.isFavorite);
+  if (favs.length > 0) return favs.slice(0, 12);
+  return all.slice(0, 8);
 }
 
 export function searchContactsSync(query: string): Contact[] {
-  const all = cachedContacts && cachedContacts.length > 0 ? cachedContacts : getFallbackContacts();
+  const all = cachedContacts ?? [];
   if (!query.trim()) return all;
   const q = query.toLowerCase().trim();
   const digits = q.replace(/\D/g, '');

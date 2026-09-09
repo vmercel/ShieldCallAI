@@ -20,8 +20,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../../constants/theme';
-import { Contact, getInitials, findContactByNumberSync, searchContactsSync, getAllContacts } from '../../services/contactsService';
-import { CONTACTS, searchContacts, getFavorites } from '../../constants/contacts';
+import {
+  Contact, getInitials, findContactByNumberSync, searchContactsSync, getAllContacts,
+  ensureContactsPermission, getFavoritesSync,
+} from '../../services/contactsService';
+import { placeRealCall } from '../../services/phoneCall';
 import * as Speech from 'expo-speech';
 
 // Alias sync lookup
@@ -107,7 +110,7 @@ function MicButton({ isListening, onPress }: { isListening: boolean; onPress: ()
 }
 
 // ─── DIAL PAD TAB ──────────────────────────────────────────────────────────
-function DialPadTab({ onDial }: { onDial: (num: string) => void }) {
+function DialPadTab({ onDial, contacts }: { onDial: (num: string) => void; contacts: Contact[] }) {
   const [digits, setDigits] = useState('');
 
   const handleKey = (digit: string) => {
@@ -121,7 +124,7 @@ function DialPadTab({ onDial }: { onDial: (num: string) => void }) {
 
   // Find matching contacts as digits are typed
   const matchedContacts = digits.length >= 3
-    ? CONTACTS.filter(c => c.number.replace(/\D/g, '').includes(digits.replace(/\D/g, '')))
+    ? contacts.filter(c => c.number.replace(/\D/g, '').includes(digits.replace(/\D/g, '')))
     : [];
 
   const formatDisplay = (d: string) => {
@@ -216,9 +219,11 @@ function speak(text: string) {
 function VoiceTab({
   onCallContact,
   onCallNumber,
+  favorites,
 }: {
   onCallContact: (c: Contact) => void;
   onCallNumber: (num: string) => void;
+  favorites: Contact[];
 }) {
   const voice = useVoiceCommand();
   const router = useRouter();
@@ -346,14 +351,14 @@ function VoiceTab({
         </View>
       )}
 
-      <Text style={styles.favTitle}>Favorites</Text>
+      {favorites.length > 0 ? <Text style={styles.favTitle}>On this phone</Text> : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ gap: Spacing.md, paddingHorizontal: Spacing.md }}>
-        {getFavorites().map(c => (
+        {favorites.map(c => (
           <TouchableOpacity key={c.id} style={styles.favCard} onPress={() => onCallContact(c)} activeOpacity={0.8}>
             <ContactAvatar contact={c} size={50} />
             <Text style={styles.favName}>{c.name}</Text>
-            <Text style={styles.favNum}>{c.number.slice(-4)}</Text>
+            <Text style={styles.favNum}>{c.number.replace(/\D/g, '').slice(-4)}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -643,9 +648,26 @@ function AIAgentTab() {
 }
 
 // ─── CONTACTS TAB ─────────────────────────────────────────────────────────
-function ContactsTab({ onContact }: { onContact: (c: Contact) => void }) {
+function ContactsTab({
+  onContact,
+  contacts,
+  permission,
+  onAskPermission,
+}: {
+  onContact: (c: Contact) => void;
+  contacts: Contact[];
+  permission: 'unknown' | 'granted' | 'denied';
+  onAskPermission: () => void;
+}) {
   const [search, setSearch] = useState('');
-  const results = searchContacts(search);
+  const q = search.toLowerCase().trim();
+  const results = !q
+    ? contacts
+    : contacts.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        c.number.replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
+        (c.org?.toLowerCase().includes(q) ?? false),
+      );
 
   const groups = results.reduce<Record<string, Contact[]>>((acc, c) => {
     const key = search ? 'Results' : c.name[0].toUpperCase();
@@ -691,10 +713,19 @@ function ContactsTab({ onContact }: { onContact: (c: Contact) => void }) {
             ))}
           </View>
         ))}
-        {results.length === 0 && (
+        {permission !== 'granted' && (
+          <View style={styles.emptyContacts}>
+            <MaterialIcons name="contacts" size={48} color={Colors.primary} />
+            <Text style={styles.emptyText}>Allow Contacts to browse this phone</Text>
+            <TouchableOpacity style={styles.permBtn} onPress={onAskPermission} activeOpacity={0.85}>
+              <Text style={styles.permBtnText}>Grant access</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {permission === 'granted' && results.length === 0 && (
           <View style={styles.emptyContacts}>
             <MaterialIcons name="person-search" size={48} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>No contacts found</Text>
+            <Text style={styles.emptyText}>No contacts with phone numbers</Text>
           </View>
         )}
       </ScrollView>
@@ -758,6 +789,17 @@ export default function DialerScreen() {
   const [pendingContact, setPendingContact] = useState<Contact | null>(null);
   const [pendingNumber, setPendingNumber] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [deviceContacts, setDeviceContacts] = useState<Contact[]>([]);
+  const [contactPerm, setContactPerm] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+
+  const loadContacts = useCallback(async () => {
+    const ok = await ensureContactsPermission();
+    setContactPerm(ok ? 'granted' : 'denied');
+    if (ok) setDeviceContacts(await getAllContacts());
+    else setDeviceContacts([]);
+  }, []);
+
+  useEffect(() => { loadContacts(); }, [loadContacts]);
 
   const handleDial = useCallback((num: string) => {
     const found = findContactByNumber(num);
@@ -770,43 +812,36 @@ export default function DialerScreen() {
     setPendingContact(c); setPendingNumber(null); setShowConfirm(true);
   }, []);
 
-  const placeCallNow = useCallback((contact: Contact) => {
+  const startRealCall = useCallback(async (name: string, number: string, contactId?: string) => {
+    const { uuid } = await placeRealCall({ name, number });
     router.push({
       pathname: '/live-call',
       params: {
-        contactId: contact.id,
-        callerName: contact.name,
-        callerNumber: contact.number,
+        contactId: contactId ?? '',
+        callerName: name,
+        callerNumber: number,
         direction: 'outbound',
+        callUUID: uuid,
       },
     });
   }, [router]);
 
+  const placeCallNow = useCallback((contact: Contact) => {
+    startRealCall(contact.name, contact.number, contact.id);
+  }, [startRealCall]);
+
   const placeCallNumber = useCallback((num: string) => {
     const found = findContactByNumber(num);
     if (found) { placeCallNow(found); return; }
-    router.push({
-      pathname: '/live-call',
-      params: { callerNumber: num, callerName: 'Unknown', direction: 'outbound' },
-    });
-  }, [router, placeCallNow]);
+    startRealCall('Unknown', num);
+  }, [placeCallNow, startRealCall]);
 
   const confirmCall = useCallback(() => {
     setShowConfirm(false);
-    const params: Record<string, string> = {};
-    if (pendingContact) {
-      params.contactId = pendingContact.id;
-      params.callerName = pendingContact.name;
-      params.callerNumber = pendingContact.number;
-      params.direction = 'outbound';
-    } else if (pendingNumber) {
-      params.callerNumber = pendingNumber;
-      params.callerName = 'Unknown';
-      params.direction = 'outbound';
-    }
-    router.push({ pathname: '/live-call', params });
+    if (pendingContact) startRealCall(pendingContact.name, pendingContact.number, pendingContact.id);
+    else if (pendingNumber) startRealCall('Unknown', pendingNumber);
     setPendingContact(null); setPendingNumber(null);
-  }, [pendingContact, pendingNumber, router]);
+  }, [pendingContact, pendingNumber, startRealCall]);
 
   const TAB_DEFS: { key: Tab; icon: string; label: string }[] = [
     { key: 'voice', icon: 'mic', label: 'Voice' },
@@ -839,13 +874,17 @@ export default function DialerScreen() {
         {tab === 'pad' && (
           <ScrollView showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}>
-            <DialPadTab onDial={handleDial} />
+            <DialPadTab onDial={handleDial} contacts={deviceContacts} />
           </ScrollView>
         )}
         {tab === 'voice' && (
           <ScrollView showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}>
-            <VoiceTab onCallContact={placeCallNow} onCallNumber={placeCallNumber} />
+            <VoiceTab
+              onCallContact={placeCallNow}
+              onCallNumber={placeCallNumber}
+              favorites={getFavoritesSync().length ? getFavoritesSync() : deviceContacts.slice(0, 8)}
+            />
           </ScrollView>
         )}
         {tab === 'agent' && (
@@ -856,7 +895,12 @@ export default function DialerScreen() {
         )}
         {tab === 'contacts' && (
           <View style={{ flex: 1, paddingHorizontal: Spacing.md }}>
-            <ContactsTab onContact={handleContact} />
+            <ContactsTab
+              onContact={handleContact}
+              contacts={deviceContacts}
+              permission={contactPerm}
+              onAskPermission={loadContacts}
+            />
           </View>
         )}
       </View>
@@ -1129,6 +1173,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border,
   },
   emptyContacts: { alignItems: 'center', paddingTop: 48, gap: Spacing.md },
+  permBtn: {
+    marginTop: 8, backgroundColor: Colors.primary, borderRadius: Radius.md,
+    paddingHorizontal: 18, paddingVertical: 10,
+  },
+  permBtnText: { color: Colors.bg, fontWeight: FontWeight.bold, fontSize: FontSize.sm },
   emptyText: { fontSize: FontSize.md, color: Colors.textMuted },
 
   // ── CONFIRM MODAL ──

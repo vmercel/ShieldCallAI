@@ -8,7 +8,8 @@ import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { SettingsProvider } from '../contexts/SettingsContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Colors } from '../constants/theme';
-import { setupCallKit } from '../services/callKitService';
+import { router } from 'expo-router';
+import { registerCallKitEvents, setupCallKit } from '../services/callKitService';
 import { registerPushToken } from '../services/permissionsService';
 import { getAllContacts } from '../services/contactsService';
 
@@ -16,12 +17,35 @@ import { getAllContacts } from '../services/contactsService';
 function AppInitializer() {
   useEffect(() => {
     if (Platform.OS === 'web') return;
-    // Initialize CallKit for native call integration
     setupCallKit();
-    // Pre-warm contacts cache in background
     getAllContacts().catch(() => {});
-    // Register push token if notification permission is already granted
     registerPushToken().catch(() => {});
+    const unregister = registerCallKitEvents({
+      onIncomingCall: (callUUID, callerNumber, callerName) => {
+        router.push({
+          pathname: '/incoming-call',
+          params: { callUUID, callerNumber, callerName },
+        });
+      },
+      onAnswerCall: (callUUID, callerNumber, callerName) => {
+        router.replace({
+          pathname: '/live-call',
+          params: { callUUID, callerNumber, callerName, direction: 'inbound' },
+        });
+      },
+      onStartCall: (callUUID, handle, contactIdentifier) => {
+        router.push({
+          pathname: '/live-call',
+          params: {
+            callUUID,
+            callerNumber: handle,
+            callerName: contactIdentifier || handle,
+            direction: 'outbound',
+          },
+        });
+      },
+    });
+    return () => unregister();
   }, []);
   return null;
 }

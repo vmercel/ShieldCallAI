@@ -91,6 +91,7 @@ export function displayIncomingCall(opts: {
   const callUUID = generateUUID();
   if (!RNCallKeep || Platform.OS === 'web') return callUUID;
 
+  rememberCall(callUUID, opts.callerName, opts.callerNumber, 'inbound');
   try {
     RNCallKeep.displayIncomingCall(
       callUUID,
@@ -113,6 +114,7 @@ export function startOutgoingCall(opts: {
   hasVideo?: boolean;
 }): string {
   const callUUID = generateUUID();
+  rememberCall(callUUID, opts.callerName, opts.callerNumber, 'outbound');
   if (!RNCallKeep || Platform.OS === 'web') return callUUID;
 
   try {
@@ -218,8 +220,19 @@ export function updateCallHandle(callUUID: string, callerName: string): void {
 }
 
 // ── Register CallKit event listeners ─────────────────────────────────────────
+const callDirectory = new Map<string, { name: string; number: string; direction: CallDirection }>();
+
+export function rememberCall(callUUID: string, name: string, number: string, direction: CallDirection) {
+  callDirectory.set(callUUID, { name, number, direction });
+}
+
+export function lookupCall(callUUID: string) {
+  return callDirectory.get(callUUID) ?? null;
+}
+
 export interface CallKitEventHandlers {
-  onAnswerCall?: (callUUID: string) => void;
+  onIncomingCall?: (callUUID: string, callerNumber: string, callerName: string) => void;
+  onAnswerCall?: (callUUID: string, callerNumber: string, callerName: string) => void;
   onEndCall?: (callUUID: string) => void;
   onMuteCall?: (callUUID: string, muted: boolean) => void;
   onHoldCall?: (callUUID: string, onHold: boolean) => void;
@@ -232,10 +245,21 @@ export function registerCallKitEvents(handlers: CallKitEventHandlers): () => voi
 
   const listeners: any[] = [];
 
+  listeners.push(
+    RNCallKeep.addEventListener('didDisplayIncomingCall', (data: any) => {
+      const uuid = data.callUUID;
+      const number = data.handle || lookupCall(uuid)?.number || '';
+      const name = data.localizedCallerName || lookupCall(uuid)?.name || number;
+      rememberCall(uuid, name, number, 'inbound');
+      handlers.onIncomingCall?.(uuid, number, name);
+    })
+  );
+
   if (handlers.onAnswerCall) {
     listeners.push(
       RNCallKeep.addEventListener('answerCall', ({ callUUID }: { callUUID: string }) => {
-        handlers.onAnswerCall!(callUUID);
+        const known = lookupCall(callUUID);
+        handlers.onAnswerCall!(callUUID, known?.number || '', known?.name || '');
       })
     );
   }

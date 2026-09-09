@@ -17,6 +17,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../constants/theme';
 import { SentinelEngine } from '../services/sentinelEngine';
 import { AcousticSentinel, AcousticSnapshot } from '../services/acousticSentinel';
+import { setMuted as setCallMuted } from '../services/callKitService';
 import { ThreatLevel } from '../constants/mockData';
 import { findContactByNumberSync as findContactByNumber, getInitials, Contact } from '../services/contactsService';
 import { useLiveTranscription } from '../hooks/useLiveTranscription';
@@ -426,7 +427,7 @@ export default function LiveCallScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     callerName?: string; callerNumber?: string;
-    contactId?: string; direction?: string;
+    contactId?: string; direction?: string; callUUID?: string;
   }>();
 
   const direction = params.direction ?? 'inbound';
@@ -1047,7 +1048,11 @@ export default function LiveCallScreen() {
         <View style={[styles.controls, { paddingBottom: insets.bottom + 6 }]}>
           <TouchableOpacity
             style={[styles.controlBtn, isMuted && styles.controlBtnActive]}
-            onPress={() => setIsMuted(m => !m)}
+            onPress={() => setIsMuted(m => {
+              const next = !m;
+              if (params.callUUID) setCallMuted(params.callUUID, next);
+              return next;
+            })}
             activeOpacity={0.8}
           >
             <MaterialIcons name={isMuted ? 'mic-off' : 'mic'} size={20} color={isMuted ? Colors.danger : Colors.textSecondary} />
