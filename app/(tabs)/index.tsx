@@ -24,6 +24,7 @@ import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCallRecords } from '../../hooks/useCallRecords';
 import { useCommunityThreats } from '../../hooks/useCommunityThreats';
+import { trackEvent } from '../../services/analytics';
 
 // ─── Animation Helpers ────────────────────────────────────────────────────────
 function FadeInView({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: any }) {
@@ -436,7 +437,10 @@ export default function HomeScreen() {
           </View>
         </View>
         <TouchableOpacity
-          onPress={() => setGhostMode(!ghostModeEnabled)}
+          onPress={() => {
+            setGhostMode(!ghostModeEnabled);
+            trackEvent('ghost_mode_toggled', { enabled: !ghostModeEnabled }).catch(() => {});
+          }}
           style={[styles.toggle, ghostModeEnabled && styles.toggleOn]}
           activeOpacity={0.8}
         >

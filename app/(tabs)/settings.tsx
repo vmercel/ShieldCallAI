@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
-  Platform, Modal, TextInput, ActivityIndicator,
+  Platform, Modal, TextInput, ActivityIndicator, Switch,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../constants/t
 import { useAuth } from '../../contexts/AuthContext';
 import { checkAllPermissions, PermissionsState } from '../../services/permissionsService';
 import { supabase } from '../../services/supabaseClient';
+import { isAnalyticsEnabled, setAnalyticsEnabled, trackEvent } from '../../services/analytics';
 import { sidecarHealth } from '../../services/shieldcallSidecar';
 import { PhoneSetupSheet, callingIsReady } from '../../components/PhoneSetupSheet';
 
@@ -148,6 +149,11 @@ export default function SettingsScreen() {
   });
   const [coreStatus, setCoreStatus] = useState('Checking shieldcall-core…');
   const [setupOpen, setSetupOpen] = useState(false);
+  const [analyticsEnabled, setAnalyticsEnabledState] = useState(true);
+
+  useEffect(() => {
+    isAnalyticsEnabled().then(setAnalyticsEnabledState).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -368,6 +374,23 @@ export default function SettingsScreen() {
               <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
             </SettingRow>
           </TouchableOpacity>
+          <View style={styles.divider} />
+          <SettingRow
+            icon="insights"
+            label="Usage analytics"
+            sub="Anonymous feature usage only. No audio, transcripts, or contacts."
+            iconColor={Colors.primary}
+          >
+            <Switch
+              value={analyticsEnabled}
+              onValueChange={(v) => {
+                setAnalyticsEnabledState(v);
+                setAnalyticsEnabled(v).catch(() => {});
+              }}
+              trackColor={{ false: Colors.bgSurface, true: Colors.primaryGlow }}
+              thumbColor={analyticsEnabled ? Colors.primary : Colors.textMuted}
+            />
+          </SettingRow>
         </View>
 
         <Text style={styles.sectionTitle}>Your data</Text>
@@ -415,7 +438,7 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>Research</Text>
         <Text style={styles.engineerNote}>Engineer only — not the product path</Text>
         <View style={styles.section}>
-          <TouchableOpacity onPress={() => router.push('/lab-call')} activeOpacity={0.85}>
+          <TouchableOpacity onPress={() => { trackEvent('detector_lab_opened').catch(() => {}); router.push('/lab-call'); }} activeOpacity={0.85}>
             <SettingRow
               icon="hub"
               label="shieldcall-core"

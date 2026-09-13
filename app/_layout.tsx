@@ -16,6 +16,7 @@ import { supabase } from '../services/supabaseClient';
 import * as Linking from 'expo-linking';
 import { assertEnv } from '../services/env';
 import { initSentry } from '../services/sentry';
+import { initAnalytics, trackEvent } from '../services/analytics';
 
 // Fail fast at startup when required env vars are missing, instead of
 // booting into a broken state (e.g. Supabase auth silently failing).
@@ -23,6 +24,10 @@ assertEnv();
 
 // Crash reporting. Graceful no-op when EXPO_PUBLIC_SENTRY_DSN is unset.
 initSentry();
+
+// Privacy-safe analytics (feature usage only). No-op when opted out.
+initAnalytics().catch(() => {});
+trackEvent('app_open').catch(() => {});
 
 async function handleAuthUrl(url: string | null) {
   if (!url) return;
