@@ -12,7 +12,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+// Prefer the explicitly configured new-format publishable key. The
+// platform-injected SUPABASE_ANON_KEY is a legacy JWT key that was
+// disabled during the 2026-09-13 key rotation. (Custom secret names
+// cannot use the SUPABASE_ prefix, hence the name.)
+const SUPABASE_KEY =
+  Deno.env.get('SHIELDCALL_PUBLISHABLE_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY')!;
 
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
@@ -31,7 +36,7 @@ Deno.serve(async (req: Request) => {
     return new Response('Missing auth code', { status: 400 });
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 

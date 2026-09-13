@@ -209,9 +209,14 @@ export async function authorizeAndCheckQuota(
 
   const windowMs = opts.windowMs ?? DEFAULT_WINDOW_MS;
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  // Prefer the explicitly configured new-format publishable key. The
+  // platform-injected SUPABASE_ANON_KEY is a legacy JWT key that was
+  // disabled during the 2026-09-13 key rotation; keep it only as a fallback.
+  // (Custom secret names cannot use the SUPABASE_ prefix, hence the name.)
+  const supabaseAnonKey =
+    Deno.env.get('SHIELDCALL_PUBLISHABLE_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY');
   if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('[rateLimit] SUPABASE_URL/ANON_KEY not configured; failing open');
+    console.error('[rateLimit] SUPABASE_URL/publishable key not configured; failing open');
     return {
       ok: true,
       userId,
