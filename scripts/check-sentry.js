@@ -19,10 +19,10 @@ const ROOT = path.resolve(__dirname, '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'sentry-test-'));
 
 function build() {
-  // Standalone tsc knows neither __DEV__ nor process; stub both.
+  // Standalone tsc knows neither __DEV__, process, nor require; stub them.
   fs.writeFileSync(
     path.join(TMP, 'rn-stub.d.ts'),
-    'declare const __DEV__: boolean | undefined;\ndeclare const process: any;\n',
+    'declare const __DEV__: boolean | undefined;\ndeclare const process: any;\ndeclare const require: any;\n',
   );
   const src = path.join(ROOT, 'services', 'sentry.ts');
   let out = '';
