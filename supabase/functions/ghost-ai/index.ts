@@ -13,6 +13,11 @@
  */
 
 import { corsHeaders } from '../_shared/cors.ts';
+import {
+  authorizeAndCheckQuota,
+  parseLimit,
+  withQuotaHeaders,
+} from '../_shared/rateLimit.ts';
 
 const SYSTEM_PROMPT = `You are {persona}, a professional AI communications assistant working on behalf of {userName}. Your job is to handle incoming calls and protect your user.
 
@@ -63,6 +68,13 @@ Deno.serve(async (req: Request) => {
     if (!apiKey || !baseUrl) {
       throw new Error('OnSpace AI credentials not configured');
     }
+
+    // P0-3: per-user quota on the paid LLM endpoint.
+    const gate = await authorizeAndCheckQuota(req, {
+      functionName: 'ghost-ai',
+      limit: parseLimit(Deno.env.get('RATE_LIMIT_GHOST_AI_PER_HOUR'), 120),
+    });
+    if (!gate.ok) return gate.response;
 
     const {
       messages,
@@ -120,9 +132,9 @@ Deno.serve(async (req: Request) => {
     const data = await response.json();
     const reply = data.choices?.[0]?.message?.content ?? 'I understand. Could you please elaborate?';
 
-    return new Response(JSON.stringify({ reply }), {
+    return withQuotaHeaders(new Response(JSON.stringify({ reply }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    }), gate.quota);
   } catch (error) {
     console.error('Ghost AI error:', error);
     return new Response(

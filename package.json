@@ -14,7 +14,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "check:env": "node scripts/check-env.js"
+    "check:env": "node scripts/check-env.js",
+    "check:ratelimit": "node scripts/check-ratelimit.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.1",
