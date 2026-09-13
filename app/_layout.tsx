@@ -15,10 +15,14 @@ import { getAllContacts } from '../services/contactsService';
 import { supabase } from '../services/supabaseClient';
 import * as Linking from 'expo-linking';
 import { assertEnv } from '../services/env';
+import { initSentry } from '../services/sentry';
 
 // Fail fast at startup when required env vars are missing, instead of
 // booting into a broken state (e.g. Supabase auth silently failing).
 assertEnv();
+
+// Crash reporting. Graceful no-op when EXPO_PUBLIC_SENTRY_DSN is unset.
+initSentry();
 
 async function handleAuthUrl(url: string | null) {
   if (!url) return;

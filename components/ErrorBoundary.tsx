@@ -8,6 +8,7 @@ import React, { Component, ReactNode } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../constants/theme';
+import { captureAppError } from '../services/sentry';
 
 interface Props {
   children: ReactNode;
@@ -31,6 +32,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: any) {
     console.error('[CALLSHIELD ErrorBoundary]', error, info);
+    // Report UI crashes to Sentry when it is enabled (no-op otherwise).
+    try {
+      const componentStack =
+        info && typeof info.componentStack === 'string'
+          ? info.componentStack.slice(0, 2000)
+          : undefined;
+      captureAppError(
+        error,
+        componentStack ? { componentStack } : undefined,
+      );
+    } catch {}
   }
 
   handleRetry = () => {
