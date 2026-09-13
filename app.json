@@ -150,7 +150,6 @@
         }
       ],
       "expo-web-browser",
-      "@sentry/react-native/expo",
       [
         "expo-av",
         {

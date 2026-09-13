@@ -12,9 +12,11 @@
  *
  * The pure helpers (shouldInitSentry, getSentryOptions) take explicit args so
  * they are unit-testable without the native SDK: see scripts/check-sentry.js.
+ *
+ * NOTE: @sentry/react-native is an optional native dependency. The module is
+ * required lazily at runtime via require() so the bundle compiles even when
+ * the package is not installed. No top-level import of that package.
  */
-
-import type * as SentryTypes from '@sentry/react-native';
 
 export const SENTRY_DSN_VAR = 'EXPO_PUBLIC_SENTRY_DSN';
 
@@ -68,16 +70,17 @@ export function initSentry(): boolean {
     return false;
   }
   try {
-    // Lazy require keeps this module importable in node unit tests.
+    // Lazy require keeps this module importable when @sentry/react-native is
+    // not installed. The package is optional — the app runs without it.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Sentry = require('@sentry/react-native') as typeof SentryTypes;
+    const Sentry = require('@sentry/react-native');
     const isDev = typeof __DEV__ !== 'undefined' && __DEV__;
-    Sentry.init(getSentryOptions(dsn, { isDev }) as never);
+    Sentry.init(getSentryOptions(dsn, { isDev }));
     initialized = true;
     return true;
   } catch (e) {
     if (typeof console !== 'undefined') {
-      console.warn('[ShieldCall] Sentry init failed:', e);
+      console.warn('[ShieldCall] Sentry init failed (package not installed or native module missing):', e);
     }
     return false;
   }
@@ -95,7 +98,7 @@ export function captureAppError(
   try {
     if (!initialized) return;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Sentry = require('@sentry/react-native') as typeof SentryTypes;
+    const Sentry = require('@sentry/react-native');
     Sentry.captureException(
       error,
       context ? { extra: context } : undefined,
