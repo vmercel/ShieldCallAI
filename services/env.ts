@@ -29,18 +29,22 @@ export function getMissingRequiredVars(env: EnvRecord = process.env): string[] {
 }
 
 /**
- * Throw a descriptive error when required variables are missing.
- * Call this at module scope in app/_layout.tsx so misconfiguration fails
- * fast at startup instead of surfacing as mysterious runtime failures.
+ * Warn (not throw) when required variables are missing.
+ * In managed Expo/OnSpace environments the .env is injected automatically;
+ * a hard throw breaks the preview bundle before the file is available.
  */
 export function assertEnv(env: EnvRecord = process.env): void {
   const missing = getMissingRequiredVars(env);
   if (missing.length > 0) {
-    throw new Error(
-      `[ShieldCall] Missing required environment variable(s): ${missing.join(', ')}.\n` +
-        'Copy .env.example to .env at the repo root and fill in real values, then restart the app.\n' +
-        'See .env.example for what each variable is for.',
-    );
+    // Use console.warn so the preview still loads and shows a meaningful
+    // error state instead of a blank white screen.
+    if (typeof console !== 'undefined') {
+      console.warn(
+        `[ShieldCall] Missing required environment variable(s): ${missing.join(', ')}.\n` +
+          'Copy .env.example to .env at the repo root and fill in real values, then restart the app.\n' +
+          'See .env.example for what each variable is for.',
+      );
+    }
   }
 }
 
