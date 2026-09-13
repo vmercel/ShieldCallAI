@@ -14,20 +14,20 @@ const BLOCKS: Block[] = [
   {
     heading: 'The short version',
     paragraphs: [
-      'ShieldCall listens through this phone\'s microphone while a call is on speaker, scores scam language, and warns on screen. It does not join the carrier call, does not hang up, and does not sell your data.',
+      'ShieldCall AI listens through this phone\'s microphone while a call is on speaker, scores scam language, and warns on screen. It does not join the carrier call, does not hang up, and does not sell your data.',
       'Optional speech-to-text uses the operating system. Apple or Google may receive audio if the OS sends it. We do not claim that audio stays on the device.',
     ],
   },
   {
     heading: '1. Who we are',
     paragraphs: [
-      'ShieldCall ("we", "us") is a free mobile application. The bundle identifier is com.shieldcallai.app. Privacy questions: privacy@shieldcallai.com.',
+      'ShieldCall AI ("we", "us") is a free mobile application. The bundle identifier is com.shieldcallai.app. Privacy questions: privacy@shieldcallai.com.',
     ],
   },
   {
     heading: '2. What the app does',
     paragraphs: [
-      'Live Protect analyzes the conversation on this phone while a call is ongoing. Place or answer through ShieldCall (AI Dialer or incoming). Summary tiles show whether the voice is AI or human, whether the content looks like a scam or genuine, and likelihood scores.',
+      'Live Protect analyzes the conversation on this phone while a call is ongoing. Place or answer through ShieldCall AI (AI Dialer or incoming). Summary tiles show whether the voice is AI or human, whether the content looks like a scam or genuine, and likelihood scores.',
       'The app is recommend-only. It never hangs up for you. It is not a carrier intercept, a wiretap, or a certified fraud product.',
     ],
   },
@@ -40,7 +40,7 @@ const BLOCKS: Block[] = [
   {
     heading: '4. Optional speech-to-text via the OS',
     paragraphs: [
-      'When you start listening, ShieldCall may use the operating system\'s speech recognition: Apple Speech on iOS, the Android speech recognizer on Android, and the Web Speech API on web.',
+      'When you start listening, ShieldCall AI may use the operating system\'s speech recognition: Apple Speech on iOS, the Android speech recognizer on Android, and the Web Speech API on web.',
       'We do not control whether that recognizer runs fully on this device or sends audio to Apple or Google. That is dictated by the OS, language packs, device settings, and network. We do not claim on-device-only processing.',
       'If speech recognition is unavailable, you can type a sentence you heard. Scoring still runs.',
     ],
@@ -83,7 +83,7 @@ const BLOCKS: Block[] = [
   {
     heading: '9. Retention',
     paragraphs: [
-      'ShieldCall does not keep a raw recording of the call. Transcripts and scores live on the device unless you save history. Account data lasts until you delete it. Operating-system vendors may retain speech data under their own policies.',
+      'ShieldCall AI does not keep a raw recording of the call. Transcripts and scores live on the device unless you save history. Account data lasts until you delete it. Operating-system vendors may retain speech data under their own policies.',
     ],
   },
   {
@@ -105,7 +105,7 @@ const BLOCKS: Block[] = [
   {
     heading: '12. Children',
     paragraphs: [
-      'ShieldCall is not directed at children under 13 (or 16 in the European Union). We do not knowingly collect personal information from children.',
+      'ShieldCall AI is not directed at children under 13 (or 16 in the European Union). We do not knowingly collect personal information from children.',
     ],
   },
   {
@@ -117,7 +117,7 @@ const BLOCKS: Block[] = [
   {
     heading: '14. Contact',
     paragraphs: [
-      'ShieldCall Privacy. Email: privacy@shieldcallai.com.',
+      'ShieldCall AI Privacy. Email: privacy@shieldcallai.com.',
     ],
   },
 ];

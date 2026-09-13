@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD usePermissions Hook
+ * ShieldCall AI usePermissions Hook
  *
  * Manages the full permissions lifecycle:
  * - Checks current status on mount

@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD SENTINEL™ Analysis Edge Function — Claude Anthropic
+ * ShieldCall AI SENTINEL™ Analysis Edge Function — Claude Anthropic
  *
  * Receives a 10-second transcript chunk + full call context and returns
  * a comprehensive real-time threat analysis using Claude Haiku 4.5.
@@ -24,7 +24,7 @@
 
 import { corsHeaders } from '../_shared/cors.ts';
 
-const SYSTEM_PROMPT = `You are SENTINEL™, an expert real-time call threat analysis AI for CALLSHIELD. Your job is to detect scams, fraud, social engineering, and synthetic/AI voices in live phone calls.
+const SYSTEM_PROMPT = `You are SENTINEL™, an expert real-time call threat analysis AI for ShieldCall AI. Your job is to detect scams, fraud, social engineering, and synthetic/AI voices in live phone calls.
 
 You receive:
 - A 10-second transcript chunk from the current call

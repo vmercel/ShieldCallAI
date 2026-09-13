@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "ShieldCall",
+    "name": "ShieldCall AI",
     "slug": "shieldcallai",
     "version": "1.0.0",
     "description": "Analyzes the conversation on this phone while the call is ongoing. Shows AI vs human, scam vs genuine, and likelihood on a sliding tile every chunk.",
-    "githubUrl": "https://github.com/vmercel/CallShield",
+    "githubUrl": "https://github.com/vmercel/ShieldCallAI",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "shieldcallai",
@@ -67,11 +67,11 @@
       },
       "buildNumber": "1",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "ShieldCall uses the microphone to analyze this phone's conversation while a call is ongoing so it can warn you about scams.",
-        "NSContactsUsageDescription": "ShieldCall reads your contacts so you can search and call people from this phone, like a Phone app.",
+        "NSMicrophoneUsageDescription": "ShieldCall AI uses the microphone to analyze this phone's conversation while a call is ongoing so it can warn you about scams.",
+        "NSContactsUsageDescription": "ShieldCall AI reads your contacts so you can search and call people from this phone, like a Phone app.",
         "LSApplicationQueriesSchemes": ["tel", "telprompt"],
-        "NSSpeechRecognitionUsageDescription": "ShieldCall uses the operating system's speech recognition to transcribe this phone's live conversation so it can score scam language. Audio may be sent to Apple or Google as your OS dictates.",
-        "NSLocalNetworkUsageDescription": "ShieldCall may connect to an optional detector sidecar on your local network. The app works if that sidecar is not running.",
+        "NSSpeechRecognitionUsageDescription": "ShieldCall AI uses the operating system's speech recognition to transcribe this phone's live conversation so it can score scam language. Audio may be sent to Apple or Google as your OS dictates.",
+        "NSLocalNetworkUsageDescription": "ShieldCall AI may connect to an optional detector sidecar on your local network. The app works if that sidecar is not running.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
@@ -153,13 +153,13 @@
       [
         "expo-av",
         {
-          "microphonePermission": "ShieldCall uses the microphone to analyze this phone's conversation while a call is ongoing so it can warn you about scams."
+          "microphonePermission": "ShieldCall AI uses the microphone to analyze this phone's conversation while a call is ongoing so it can warn you about scams."
         }
       ],
       [
         "expo-contacts",
         {
-          "contactsPermission": "ShieldCall reads your contacts so you can search and call people from this phone, like a Phone app."
+          "contactsPermission": "ShieldCall AI reads your contacts so you can search and call people from this phone, like a Phone app."
         }
       ],
       [

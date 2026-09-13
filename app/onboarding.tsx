@@ -1,5 +1,5 @@
 /**
- * ShieldCall onboarding.
+ * ShieldCall AI onboarding.
  * Guest path: slides → consent → permissions → app. Account is optional.
  */
 
@@ -34,7 +34,7 @@ const SLIDES = [
   {
     image: require('../assets/images/onboard_2.png'),
     title: 'Warns. Never\nhangs up.',
-    subtitle: 'ShieldCall does not join the carrier call and never hangs up for you. You stay in control of the conversation.',
+    subtitle: 'ShieldCall AI does not join the carrier call and never hangs up for you. You stay in control of the conversation.',
     icon: 'volume-up',
   },
   {
@@ -396,7 +396,7 @@ function SignUpScreen({ onSignIn, onSuccess, onSignedIn, onSkip }: {
           <MaterialIcons name="shield" size={40} color={Colors.primary} />
         </View>
         <Text style={styles.authTitle}>Create Account</Text>
-        <Text style={styles.authSubtitle}>Save your calls and profile to ShieldCall. Free.</Text>
+        <Text style={styles.authSubtitle}>Save your calls and profile to ShieldCall AI. Free.</Text>
 
         <View style={styles.form}>
           <AuthInput icon="person" placeholder="Full Name" value={fullName} onChangeText={setFullName} autoCapitalize="words" />
@@ -469,7 +469,7 @@ function SignInScreen({ onSignUp, onSuccess, onForgotPassword, onSkip }: { onSig
           <MaterialIcons name="shield" size={40} color={Colors.primary} />
         </View>
         <Text style={styles.authTitle}>Welcome Back</Text>
-        <Text style={styles.authSubtitle}>Sign in to your ShieldCall account.</Text>
+        <Text style={styles.authSubtitle}>Sign in to your ShieldCall AI account.</Text>
 
         <View style={styles.form}>
           <AuthInput icon="email" placeholder="Email Address" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
@@ -497,7 +497,7 @@ function SignInScreen({ onSignUp, onSuccess, onForgotPassword, onSkip }: { onSig
           )}
         </TouchableOpacity>
         <TouchableOpacity onPress={onSignUp} style={styles.switchBtn} activeOpacity={0.8}>
-          <Text style={styles.switchText}>New to ShieldCall? <Text style={styles.switchLink}>Create Account</Text></Text>
+          <Text style={styles.switchText}>New to ShieldCall AI? <Text style={styles.switchLink}>Create Account</Text></Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={onSkip} style={styles.switchBtn} activeOpacity={0.8}>
           <Text style={styles.switchLink}>Use on this phone without saving history</Text>
@@ -684,13 +684,13 @@ export default function OnboardingScreen() {
             </View>
             <Text style={{ fontSize: FontSize.xl, fontWeight: FontWeight.extrabold, color: Colors.text, textAlign: 'center' }}>How Live Protect works</Text>
             <Text style={{ fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 }}>
-              ShieldCall listens on this phone while a call is on speaker. Read this before you start.
+              ShieldCall AI listens on this phone while a call is on speaker. Read this before you start.
             </Text>
           </View>
 
           {[
             { icon: 'volume-up', title: 'Speakerphone listen', body: 'Put the other phone on speaker. This phone uses its microphone to hear the conversation, scores scam language, and shows a warning on screen.' },
-            { icon: 'call-end', title: 'Recommend only', body: 'ShieldCall does not join the carrier call and never hangs up for you. You stay in control of the call.' },
+            { icon: 'call-end', title: 'Recommend only', body: 'ShieldCall AI does not join the carrier call and never hangs up for you. You stay in control of the call.' },
             { icon: 'gavel', title: 'All-party consent', body: 'Where the law requires every party to consent to analysis or recording, you must have that consent before starting Live Protect. You are responsible for following the laws where you and the other parties are located.' },
             { icon: 'mic', title: 'Microphone', body: 'Live Protect needs the microphone on this phone. Speech recognition uses the operating system. Scoring can run on-device; an optional LAN sidecar is extra and not required.' },
           ].map(item => (

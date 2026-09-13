@@ -8,7 +8,7 @@ import Constants from 'expo-constants';
 const ANDROID_PACKAGE = 'com.shieldcallai.app';
 
 export function hostAppLabel(): string {
-  return Constants.appOwnership === 'expo' ? 'Expo Go' : 'ShieldCall';
+  return Constants.appOwnership === 'expo' ? 'Expo Go' : 'ShieldCall AI';
 }
 
 export function deniedSettingsHint(): string {

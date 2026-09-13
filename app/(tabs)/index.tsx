@@ -1,5 +1,5 @@
 /**
- * ShieldCall Shield Screen — Home
+ * ShieldCall AI Shield Screen — Home
  *
  * 100% real data. No simulations, no mocks, no demos.
  *
@@ -413,7 +413,7 @@ export default function HomeScreen() {
         </Pressable>
       </FadeInView>
       <Text style={styles.samePhoneHint}>
-        One phone. Place or answer through ShieldCall, stay on screen, and a tile slides in every chunk: AI or human, scam or genuine, likelihood.
+        One phone. Place or answer through ShieldCall AI, stay on screen, and a tile slides in every chunk: AI or human, scam or genuine, likelihood.
       </Text>
 
       {/* SENTINEL™ Intelligence — Real Analytics from Call Records */}
@@ -432,7 +432,7 @@ export default function HomeScreen() {
             <Text style={styles.ghostSub}>
               {ghostModeEnabled
                 ? `${personaName} picks up and talks to the caller for you`
-                : 'Turn on to have ShieldCall answer and converse on your behalf'}
+                : 'Turn on to have ShieldCall AI answer and converse on your behalf'}
             </Text>
           </View>
         </View>

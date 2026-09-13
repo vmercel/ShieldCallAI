@@ -1,6 +1,6 @@
 /**
  * ghostAIService — Calls the Ghost AI Edge Function
- * Replaces the finite-state machine with real OnSpace AI responses
+ * Replaces the finite-state machine with real AI responses
  */
 import { supabase } from './supabaseClient';
 import { FunctionsHttpError } from '@supabase/supabase-js';

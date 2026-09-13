@@ -142,7 +142,7 @@ export default function ListenRoom() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 12 }]}>
-      <Text style={styles.brand}>ShieldCall</Text>
+      <Text style={styles.brand}>ShieldCall AI</Text>
 
       <View style={styles.stage}>
         <Pulse active={status.listening} caution={caution} />
@@ -191,7 +191,7 @@ export default function ListenRoom() {
           <Text style={styles.gateKicker}>Before we listen</Text>
           <Text style={styles.gateTitle}>This phone hears the room.</Text>
           <Text style={styles.gateBody}>
-            Put the other phone on speaker. ShieldCall does not join the call and never hangs up.
+            Put the other phone on speaker. ShieldCall AI does not join the call and never hangs up.
             You confirm you are allowed to analyze this conversation.
           </Text>
           <Pressable

@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD Incoming Call Screen
+ * ShieldCall AI Incoming Call Screen
  *
  * Displays native-quality incoming call UI with:
  * - Real contact lookup from device contacts (via contactsService)

@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD Call Summary Edge Function
+ * ShieldCall AI Call Summary Edge Function
  * Generates an AI-powered post-call summary from transcript data.
  * Produces: plain-language summary, threat assessment, action items,
  * scam classification, and community intelligence contribution.
@@ -7,7 +7,7 @@
 
 import { corsHeaders } from '../_shared/cors.ts';
 
-const SYSTEM_PROMPT = `You are CALLSHIELD's post-call AI analyst. Given a call transcript and threat data, generate a concise, actionable call summary.
+const SYSTEM_PROMPT = `You are ShieldCall AI's post-call AI analyst. Given a call transcript and threat data, generate a concise, actionable call summary.
 
 Return JSON with this exact structure:
 {
@@ -16,7 +16,7 @@ Return JSON with this exact structure:
   "scamType": "Specific scam category name or null if legitimate",
   "threatAssessment": "One sentence threat assessment",
   "actionItems": ["Action 1", "Action 2"],
-  "communityContribution": "How this call helps the broader CALLSHIELD network" 
+  "communityContribution": "How this call helps the broader ShieldCall AI network" 
 }`;
 
 Deno.serve(async (req: Request) => {
@@ -29,7 +29,7 @@ Deno.serve(async (req: Request) => {
     const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
 
     if (!apiKey || !baseUrl) {
-      throw new Error('OnSpace AI credentials not configured');
+      throw new Error('AI provider credentials not configured');
     }
 
     const { transcript, threatScore, threatLevel, flags, duration, callerName, callerNumber } = await req.json();
@@ -60,7 +60,7 @@ Deno.serve(async (req: Request) => {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`OnSpace AI error: ${errText}`);
+      throw new Error(`AI provider error: ${errText}`);
     }
 
     const data = await response.json();

@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD Error Boundary
+ * ShieldCall AI Error Boundary
  * Catches uncaught React render exceptions and shows a recovery screen
  * instead of a blank/crashed app.
  */
@@ -31,7 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: any) {
-    console.error('[CALLSHIELD ErrorBoundary]', error, info);
+    console.error('[ShieldCall AI ErrorBoundary]', error, info);
     // Report UI crashes to Sentry when it is enabled (no-op otherwise).
     try {
       const componentStack =

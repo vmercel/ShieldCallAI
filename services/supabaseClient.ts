@@ -1,5 +1,5 @@
 /**
- * Supabase Client for CALLSHIELD
+ * Supabase Client for ShieldCall AI
  * Configured with cross-platform session storage and PKCE auth flow.
  */
 

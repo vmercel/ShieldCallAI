@@ -1,16 +1,15 @@
 # Store listing metadata + privacy label drafts (P1-10)
 
 > **DRAFT. Not filed anywhere.** Every `[TBD]` below is a decision or asset
-> still needed before submission. The app name, subtitle, and description
-> use the working title "ShieldCall" and must be revisited under P1-9
-> (branding unification). No claim in this file invents users, ratings,
-> revenue, or awards.
+> still needed before submission. Brand decided 2026-09-13 under P1-9:
+> the product is **ShieldCall AI** (project: ShieldCallAI). No claim in this
+> file invents users, ratings, revenue, or awards.
 
 ## 1. App Store metadata draft
 
 | Field | Draft value |
 |---|---|
-| App name | ShieldCall `[TBD P1-9]` |
+| App name | ShieldCall AI |
 | Subtitle (30 chars max) | AI call screening & scam defense |
 | Category (primary) | Utilities |
 | Category (secondary) | Productivity |
@@ -22,10 +21,10 @@
 
 ### Description draft (4,000 chars max)
 
-> ShieldCall screens your unknown calls with on-device AI so you never have
+> ShieldCall AI screens your unknown calls with on-device AI so you never have
 > to pick up for a stranger again.
 >
-> When an unknown number calls, ShieldCall answers on your behalf, carries a
+> When an unknown number calls, ShieldCall AI answers on your behalf, carries a
 > natural screening conversation, and shows you a live transcript with a
 > scam-risk score. Legitimate callers get through. Robocalls, scammers, and
 > telemarketers get handled without ever ringing your phone.
@@ -48,7 +47,7 @@
 
 ### Review notes draft (for the App Review team)
 
-> ShieldCall is a call-screening app. It uses CallKit/PushKit with the
+> ShieldCall AI is a call-screening app. It uses CallKit/PushKit with the
 > `voip` background mode so it can answer incoming calls on the user's
 > behalf and screen them with an AI agent. Microphone access is used only
 > during an active screened call to analyze the conversation for scam

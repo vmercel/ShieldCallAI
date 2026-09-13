@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD Ghost Mode Screen
+ * ShieldCall AI Ghost Mode Screen
  *
  * The AI persona answers the call automatically while the user listens.
  * Caller audio is transcribed in real-time via Web Speech API (continuous mode)
@@ -7,7 +7,7 @@
  *
  * Every transcribed caller utterance is:
  *  1. Fed to SENTINEL™ for real-time threat analysis
- *  2. Sent to OnSpace AI (Ghost AI edge function) for contextual response
+ *  2. Sent to the AI provider (Ghost AI edge function) for contextual response
  *  3. Spoken aloud via expo-speech TTS
  */
 

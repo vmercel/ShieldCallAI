@@ -13,7 +13,7 @@ import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabaseClient';
 
-const PERMISSIONS_REQUESTED_KEY = 'callshield_permissions_v1';
+const PERMISSIONS_REQUESTED_KEY = 'shieldcallai_permissions_v1';
 
 export type PermissionStatus = 'undetermined' | 'granted' | 'denied' | 'limited';
 

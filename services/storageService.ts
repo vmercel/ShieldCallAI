@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const ONBOARDING_KEY = 'callshield_onboarded';
-const GHOST_MODE_KEY = 'callshield_ghost_mode';
-const PERSONA_KEY = 'callshield_persona';
+const ONBOARDING_KEY = 'shieldcallai_onboarded';
+const GHOST_MODE_KEY = 'shieldcallai_ghost_mode';
+const PERSONA_KEY = 'shieldcallai_persona';
 
 export const StorageService = {
   async isOnboarded(): Promise<boolean> {

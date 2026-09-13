@@ -1,12 +1,12 @@
 /**
- * CALLSHIELD AI Dialer — Powered by OnSpace AI (Gemini 3 Flash)
+ * ShieldCall AI Dialer — Powered by ShieldCall AI (Gemini 3 Flash)
  *
  * Three interaction modes:
  * 1. VOICE COMMAND  — Say "Call Mom" → instant dial
  * 2. AI AGENT       — Type a task → AI conducts the full call autonomously
  * 3. CONTACTS       — Phone book search + quick-dial
  *
- * The AI Agent tab uses OnSpace AI to simulate complete call flows:
+ * The AI Agent tab uses the configured AI provider to simulate complete call flows:
  * IVR navigation, hold, agent interaction, task completion, and summary.
  */
 
@@ -317,7 +317,7 @@ function VoiceTab({
         <Text style={styles.voiceSub}>
           {isListening
             ? 'Call Mom. Call Dr Nguyen. Ghost Mode.'
-            : 'Tap the mic and say who to call. ShieldCall finds the contact and dials.'}
+            : 'Tap the mic and say who to call. ShieldCall AI finds the contact and dials.'}
         </Text>
       </View>
 
@@ -408,7 +408,7 @@ function AgentVoicePrompt({
   );
 }
 
-// ─── AI AGENT TAB (Real OnSpace AI) ───────────────────────────────────────
+// ─── AI AGENT TAB (Real AI) ───────────────────────────────────────
 type AgentPhase = 'idle' | 'running' | 'complete' | 'error';
 
 function AIAgentTab() {
@@ -489,7 +489,7 @@ function AIAgentTab() {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.agentTitle}>AI Call Agent</Text>
-          <Text style={styles.agentSub}>Powered by OnSpace AI · Gemini 3 Flash</Text>
+          <Text style={styles.agentSub}>Powered by ShieldCall AI · Gemini 3 Flash</Text>
         </View>
         <View style={styles.agentOnBadge}>
           <View style={styles.agentDot} />

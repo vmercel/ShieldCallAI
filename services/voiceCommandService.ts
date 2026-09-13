@@ -1,6 +1,6 @@
 /**
  * VoiceCommandService
- * Cross-platform voice recognition for CALLSHIELD
+ * Cross-platform voice recognition for ShieldCall AI
  *
  * Web (Chrome/Safari): Uses native Web Speech API (SpeechRecognition) — real STT
  * Native (iOS/Android): Uses expo-av recording + amplitude detection, 

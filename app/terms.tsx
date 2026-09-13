@@ -14,14 +14,14 @@ const BLOCKS: Block[] = [
   {
     heading: '1. Agreement',
     paragraphs: [
-      'By downloading, installing, or using ShieldCall (the "App"), you agree to these Terms of Use. If you do not agree, do not use the App.',
-      'These terms are an agreement between you and ShieldCall ("we", "us"). The Privacy Policy is part of this agreement.',
+      'By downloading, installing, or using ShieldCall AI (the "App"), you agree to these Terms of Use. If you do not agree, do not use the App.',
+      'These terms are an agreement between you and ShieldCall AI ("we", "us"). The Privacy Policy is part of this agreement.',
     ],
   },
   {
     heading: '2. What the App is',
     paragraphs: [
-      'ShieldCall is a free app. There are no in-app purchases in v1. Live Protect listens on this phone\'s microphone while a call is on speaker, scores scam language, and warns on screen.',
+      'ShieldCall AI is a free app. There are no in-app purchases in v1. Live Protect listens on this phone\'s microphone while a call is on speaker, scores scam language, and warns on screen.',
       'The App never hangs up a call and never joins the carrier call. It is not a carrier intercept.',
     ],
   },
@@ -34,7 +34,7 @@ const BLOCKS: Block[] = [
   {
     heading: '4. Not a certified fraud product',
     paragraphs: [
-      'ShieldCall is not certified, licensed, audited, or guaranteed as a fraud-detection, deepfake-detection, identity-verification, or law-enforcement tool. Linguistic scoring uses pattern matching and heuristics. Acoustic cues are a weak volume proxy, not a vocoder or deepfake detector.',
+      'ShieldCall AI is not certified, licensed, audited, or guaranteed as a fraud-detection, deepfake-detection, identity-verification, or law-enforcement tool. Linguistic scoring uses pattern matching and heuristics. Acoustic cues are a weak volume proxy, not a vocoder or deepfake detector.',
       'The App is not legal advice, not a recording compliance product, and not a substitute for hanging up, verifying a caller through a known number, or contacting an institution yourself.',
     ],
   },
@@ -43,7 +43,7 @@ const BLOCKS: Block[] = [
     paragraphs: [
       'You represent that you have the legal right to listen to and analyze the call, including consent from every party where the law requires it.',
       'In many places, including a number of U.S. states (for example California, Florida, Illinois, Maryland, Massachusetts, Michigan, Montana, Nevada, New Hampshire, Oregon, Pennsylvania, and Washington), all parties must consent before a call is recorded or monitored. Similar rules exist in Canada, the EU, the UK, Australia, and elsewhere.',
-      'You are solely responsible for complying with wiretap, recording, and privacy laws that apply to you. If you are not sure, do not use Live Protect, or consult a lawyer. ShieldCall is not liable for your failure to obtain required consent.',
+      'You are solely responsible for complying with wiretap, recording, and privacy laws that apply to you. If you are not sure, do not use Live Protect, or consult a lawyer. ShieldCall AI is not liable for your failure to obtain required consent.',
     ],
   },
   {
@@ -83,7 +83,7 @@ const BLOCKS: Block[] = [
   {
     heading: '11. Intellectual property',
     paragraphs: [
-      'The App, including the ShieldCall name, SENTINEL scoring, and UI, is owned by ShieldCall. You receive a limited, non-exclusive, non-transferable license to use the App for personal, lawful purposes.',
+      'The App, including the ShieldCall AI name, SENTINEL scoring, and UI, is owned by ShieldCall AI. You receive a limited, non-exclusive, non-transferable license to use the App for personal, lawful purposes.',
     ],
   },
   {

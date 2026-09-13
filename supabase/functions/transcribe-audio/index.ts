@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD Transcribe Audio Edge Function
+ * ShieldCall AI Transcribe Audio Edge Function
  *
  * Accepts a base64-encoded audio chunk from a native device recording
  * and returns a text transcript using Deepgram's Nova-2 model.

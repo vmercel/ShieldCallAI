@@ -1,5 +1,5 @@
 /**
- * ShieldCall Live Call — same-phone in-call analysis
+ * ShieldCall AI Live Call — same-phone in-call analysis
  *
  * Stay on this screen while the call runs on THIS phone (AI Dialer / incoming /
  * CallKit). One live result card. Each ~10s window revises the running verdict

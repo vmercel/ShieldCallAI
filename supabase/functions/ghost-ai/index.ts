@@ -1,6 +1,6 @@
 /**
- * CALLSHIELD Ghost AI Edge Function
- * Powers the Ghost Mode conversational AI using OnSpace AI (Gemini Flash)
+ * ShieldCall AI Ghost AI Edge Function
+ * Powers the Ghost Mode conversational AI (Gemini Flash)
  *
  * Receives the full conversation history + SENTINEL threat context
  * and generates a contextually adaptive AI persona response.
@@ -61,7 +61,7 @@ Deno.serve(async (req: Request) => {
     const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
 
     if (!apiKey || !baseUrl) {
-      throw new Error('OnSpace AI credentials not configured');
+      throw new Error('AI provider credentials not configured');
     }
 
     const {
@@ -114,7 +114,7 @@ Deno.serve(async (req: Request) => {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`OnSpace AI error: ${errText}`);
+      throw new Error(`AI provider error: ${errText}`);
     }
 
     const data = await response.json();

@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD CallKit Service — iOS Native Call Integration
+ * ShieldCall AI CallKit Service — iOS Native Call Integration
  *
  * Uses react-native-callkeep to integrate with iOS CallKit, enabling:
  * - Native incoming call UI (shows on lock screen)
@@ -51,7 +51,7 @@ const CALLKEEP_OPTIONS = {
     okButton: 'OK',
     additionalPermissions: [],
     foregroundService: {
-      channelId: 'callshield-calls',
+      channelId: 'shieldcallai-calls',
       channelName: 'Incoming Calls',
       notificationTitle: 'ShieldCall AI is running',
       notificationIcon: 'ic_launcher_round',

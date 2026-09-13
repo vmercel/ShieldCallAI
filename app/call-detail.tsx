@@ -472,7 +472,7 @@ export default function CallDetailScreen() {
           {call.ghostHandled && (
             <View style={styles.ghostBadge}>
               <MaterialIcons name="hearing" size={12} color={Colors.primary} />
-              <Text style={styles.ghostBadgeText}>Handled by AI Ghost Agent (OnSpace AI)</Text>
+              <Text style={styles.ghostBadgeText}>Handled by ShieldCall AI Ghost Agent</Text>
             </View>
           )}
         </View>

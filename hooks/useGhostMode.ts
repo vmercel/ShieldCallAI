@@ -1,10 +1,10 @@
 /**
- * useGhostMode Hook — UPGRADED with Real OnSpace AI
+ * useGhostMode Hook — UPGRADED with real AI responses
  *
  * Ghost Mode now uses the Ghost AI Edge Function (Gemini 3 Flash)
  * instead of the finite-state machine. Every caller utterance is:
  * 1. Analyzed by SENTINEL™ NLP engine for threat scoring
- * 2. Sent to OnSpace AI with full context (messages, threat level, flags)
+ * 2. Sent to the AI provider with full context (messages, threat level, flags)
  * 3. Spoken aloud via expo-speech TTS
  * 4. Tracked for intelligence gathering
  */
@@ -205,7 +205,7 @@ export function useGhostMode(personaName: string, userName = 'the account holder
       }
     }
 
-    // Call OnSpace AI Ghost responder
+    // Call the AI Ghost responder
     setState(prev => ({ ...prev, isAISpeaking: true }));
 
     const { reply, error } = await ghostAIService.getResponse({

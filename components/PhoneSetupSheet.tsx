@@ -83,12 +83,12 @@ export function PhoneSetupSheet({
           <Text style={styles.title}>{ready ? 'You are ready to call' : 'Set up calling'}</Text>
           <Text style={styles.sub}>
             {ready
-              ? 'Say a name, or pick someone from Contacts. ShieldCall dials and watches the call.'
+              ? 'Say a name, or pick someone from Contacts. ShieldCall AI dials and watches the call.'
               : 'Tap Allow. iOS will ask for Contacts and Microphone. That is the whole setup.'}
           </Text>
 
           <StepRow ok={contactsOk} label="Contacts" detail="So you can say a name and dial" />
-          <StepRow ok={micOk} label="Microphone" detail="So ShieldCall can score the live call" />
+          <StepRow ok={micOk} label="Microphone" detail="So ShieldCall AI can score the live call" />
           {Platform.OS === 'android' ? (
             <StepRow
               ok={perms?.phone === 'granted'}

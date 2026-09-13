@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD useCallKit Hook
+ * ShieldCall AI useCallKit Hook
  *
  * Integrates with iOS CallKit via react-native-callkeep.
  * Provides:

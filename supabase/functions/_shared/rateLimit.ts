@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD shared rate limiting for AI edge functions (P0-3).
+ * ShieldCall AI shared rate limiting for AI edge functions (P0-3).
  *
  * Per-user, per-function quotas backed by the `consume_ai_quota` Postgres RPC
  * (see supabase/migrations/*_ai_quota_usage.sql). The increment-and-check is a

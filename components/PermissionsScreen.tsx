@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD Permissions Request Screen (component for onboarding)
+ * ShieldCall AI Permissions Request Screen (component for onboarding)
  *
  * Shown after persona selection, before the main app.
  * Requests all iOS permissions needed for full functionality.
@@ -26,14 +26,14 @@ const PERMISSION_ITEMS: PermissionItem[] = [
     key: 'contacts',
     icon: 'contacts',
     title: 'Contacts',
-    description: 'So you can say a name and ShieldCall dials that person.',
+    description: 'So you can say a name and ShieldCall AI dials that person.',
     required: true,
   },
   {
     key: 'microphone',
     icon: 'mic',
     title: 'Microphone',
-    description: 'So ShieldCall can score the live call for scams and AI voices.',
+    description: 'So ShieldCall AI can score the live call for scams and AI voices.',
     required: true,
   },
 ];

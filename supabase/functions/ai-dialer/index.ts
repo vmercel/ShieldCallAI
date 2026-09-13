@@ -1,5 +1,5 @@
 /**
- * CALLSHIELD AI Dialer Edge Function — Phase-Streaming Mode
+ * ShieldCall AI Dialer Edge Function — Phase-Streaming Mode
  *
  * Streams call execution in phases so the client can display
  * real-time animated progress: DIALING → IVR → HOLD → AGENT → COMPLETE
@@ -15,7 +15,7 @@
 
 import { corsHeaders } from '../_shared/cors.ts';
 
-const SYSTEM_PROMPT = `You are CALLSHIELD's AI Dialer agent. You simulate conducting a real phone call on behalf of a user to complete a specific task.
+const SYSTEM_PROMPT = `You are ShieldCall AI's AI Dialer agent. You simulate conducting a real phone call on behalf of a user to complete a specific task.
 
 Given a task instruction, simulate the full call flow with EXACTLY this JSON structure:
 
@@ -87,7 +87,7 @@ Deno.serve(async (req: Request) => {
     const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
 
     if (!apiKey || !baseUrl) {
-      throw new Error('OnSpace AI credentials not configured');
+      throw new Error('AI provider credentials not configured');
     }
 
     const { instruction, userContext } = await req.json();
@@ -99,7 +99,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Call OnSpace AI to generate the full phased call simulation
+    // Call the AI provider to generate the full phased call simulation
     const aiResponse = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -122,7 +122,7 @@ Deno.serve(async (req: Request) => {
 
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
-      throw new Error(`OnSpace AI: ${aiResponse.status} ${errText}`);
+      throw new Error(`AI provider: ${aiResponse.status} ${errText}`);
     }
 
     const aiData = await aiResponse.json();

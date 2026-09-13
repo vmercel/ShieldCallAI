@@ -79,7 +79,7 @@ export function buildEvent(
 ): AnalyticsEvent | null {
   if (!isAllowedEvent(name)) {
     if (typeof console !== 'undefined') {
-      console.warn(`[ShieldCall] analytics: unknown event "${name}" dropped`);
+      console.warn(`[ShieldCall AI] analytics: unknown event "${name}" dropped`);
     }
     return null;
   }

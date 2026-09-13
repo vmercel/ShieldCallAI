@@ -190,7 +190,7 @@ export default function SettingsScreen() {
   };
 
   const handleSignOut = () => {
-    showConfirm('Sign Out', 'Sign out of ShieldCall on this device?', 'Sign Out', async () => {
+    showConfirm('Sign Out', 'Sign out of ShieldCall AI on this device?', 'Sign Out', async () => {
       setSigningOut(true);
       await signOut();
       router.replace('/onboarding');
@@ -211,7 +211,7 @@ export default function SettingsScreen() {
           await supabase.from('call_records').delete().eq('user_id', user.id);
         }
         const keys = await AsyncStorage.getAllKeys();
-        const appKeys = keys.filter(k => k.toLowerCase().includes('callshield') || k.toLowerCase().includes('shieldcall'));
+        const appKeys = keys.filter(k => k.toLowerCase().includes('shieldcallai') || k.toLowerCase().includes('shieldcall'));
         if (appKeys.length) await AsyncStorage.multiRemove(appKeys);
         if (isAuthenticated) await signOut();
         router.replace('/onboarding' as any);
@@ -221,13 +221,13 @@ export default function SettingsScreen() {
     };
     showConfirm(
       'Delete my data',
-      'This permanently deletes ShieldCall data on this device, including settings and call history. This cannot be undone.',
+      'This permanently deletes ShieldCall AI data on this device, including settings and call history. This cannot be undone.',
       'Delete',
       doDelete,
     );
   };
 
-  const displayName = profile?.full_name ?? profile?.username ?? (isAuthenticated ? 'ShieldCall user' : 'Guest');
+  const displayName = profile?.full_name ?? profile?.username ?? (isAuthenticated ? 'ShieldCall AI user' : 'Guest');
   const displayEmail = profile?.email ?? '';
   const displayPhone = profile?.phone ?? '';
   const initials = displayName.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
@@ -349,7 +349,7 @@ export default function SettingsScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.settingLabel}>Microphone</Text>
-              <Text style={styles.settingSub}>Required so ShieldCall can analyze this phone's live conversation</Text>
+              <Text style={styles.settingSub}>Required so ShieldCall AI can analyze this phone's live conversation</Text>
             </View>
             <TouchableOpacity
               onPress={() => setSetupOpen(true)}
@@ -364,7 +364,7 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>Legal</Text>
         <View style={styles.section}>
           <TouchableOpacity onPress={() => router.push('/privacy' as any)} activeOpacity={0.8}>
-            <SettingRow icon="privacy-tip" label="Privacy Policy" sub="How ShieldCall handles call audio and transcripts">
+            <SettingRow icon="privacy-tip" label="Privacy Policy" sub="How ShieldCall AI handles call audio and transcripts">
               <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
             </SettingRow>
           </TouchableOpacity>
@@ -428,7 +428,7 @@ export default function SettingsScreen() {
             </>
           ) : (
             <TouchableOpacity onPress={() => router.push('/onboarding')} activeOpacity={0.8}>
-              <SettingRow icon="login" label="Sign in or create account" sub="Required to save call history and your profile in ShieldCall.">
+              <SettingRow icon="login" label="Sign in or create account" sub="Required to save call history and your profile in ShieldCall AI.">
                 <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
               </SettingRow>
             </TouchableOpacity>
@@ -457,7 +457,7 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.version}>ShieldCall v1.0.0</Text>
+        <Text style={styles.version}>ShieldCall AI v1.0.0</Text>
       </ScrollView>
     </>
   );

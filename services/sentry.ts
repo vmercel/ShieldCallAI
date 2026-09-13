@@ -5,7 +5,7 @@
  * It is a graceful no-op when EXPO_PUBLIC_SENTRY_DSN is blank, so local dev
  * and preview builds work without any Sentry project.
  *
- * Privacy: ShieldCall handles calls, transcripts, and contacts. None of that
+ * Privacy: ShieldCall AI handles calls, transcripts, and contacts. None of that
  * is ever passed to Sentry. captureAppError only sends the exception plus an
  * optional small string-valued context map; beforeSend drops the default
  * user object so no device user PII leaves the phone.
@@ -63,7 +63,7 @@ export function initSentry(): boolean {
   if (!shouldInitSentry(dsn)) {
     if (typeof console !== 'undefined') {
       console.info(
-        `[ShieldCall] Sentry disabled: ${SENTRY_DSN_VAR} is not set. ` +
+        `[ShieldCall AI] Sentry disabled: ${SENTRY_DSN_VAR} is not set. ` +
           'Set it in .env to enable crash reporting.',
       );
     }
@@ -80,7 +80,7 @@ export function initSentry(): boolean {
     return true;
   } catch (e) {
     if (typeof console !== 'undefined') {
-      console.warn('[ShieldCall] Sentry init failed (package not installed or native module missing):', e);
+      console.warn('[ShieldCall AI] Sentry init failed (package not installed or native module missing):', e);
     }
     return false;
   }

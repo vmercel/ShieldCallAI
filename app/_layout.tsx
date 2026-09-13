@@ -92,7 +92,7 @@ function AuthLoadingGate({ children }: { children: React.ReactNode }) {
     return (
       <View style={loadingStyles.container}>
         <View style={loadingStyles.logoWrap}>
-          <Text style={loadingStyles.logo}>ShieldCall</Text>
+          <Text style={loadingStyles.logo}>ShieldCall AI</Text>
           <Text style={loadingStyles.sub}>Live Protect</Text>
         </View>
         <ActivityIndicator color={Colors.primary} size="large" style={{ marginTop: 40 }} />
