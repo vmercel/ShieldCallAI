@@ -15,7 +15,7 @@
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "***REDACTED***"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": ""
       }
     },
     "development-simulator": {
@@ -29,7 +29,7 @@
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "***REDACTED***"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": ""
       }
     },
     "preview": {
@@ -42,7 +42,7 @@
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "***REDACTED***"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": ""
       }
     },
     "production": {
@@ -55,7 +55,7 @@
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "***REDACTED***"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": ""
       }
     }
   },

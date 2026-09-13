@@ -14,8 +14,7 @@
       "privacyPolicyUrl": "https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/privacy",
       "termsOfServiceUrl": "https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/terms",
       "supportUrl": "https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/support",
-      "supabaseUrl": "https://cnrgrivqmuivxpnstaom.supabase.co",
-      "supabaseAnonKey": "***REDACTED***"
+      "supabaseUrl": "https://cnrgrivqmuivxpnstaom.supabase.co"
     },
     "ios": {
       "supportsTablet": false,
