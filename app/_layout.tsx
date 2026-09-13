@@ -14,6 +14,11 @@ import { registerPushToken } from '../services/permissionsService';
 import { getAllContacts } from '../services/contactsService';
 import { supabase } from '../services/supabaseClient';
 import * as Linking from 'expo-linking';
+import { assertEnv } from '../services/env';
+
+// Fail fast at startup when required env vars are missing, instead of
+// booting into a broken state (e.g. Supabase auth silently failing).
+assertEnv();
 
 async function handleAuthUrl(url: string | null) {
   if (!url) return;
