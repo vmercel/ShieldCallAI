@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "ShieldCall AI",
-    "slug": "shieldcallai",
+    "slug": "shieldcall-ai",
     "version": "1.0.0",
     "description": "Analyzes the conversation on this phone while the call is ongoing. Shows AI vs human, scam vs genuine, and likelihood on a sliding tile every chunk.",
     "githubUrl": "https://github.com/vmercel/ShieldCallAI",
@@ -14,7 +14,11 @@
       "privacyPolicyUrl": "https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/privacy",
       "termsOfServiceUrl": "https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/terms",
       "supportUrl": "https://cnrgrivqmuivxpnstaom.supabase.co/functions/v1/support",
-      "supabaseUrl": "https://cnrgrivqmuivxpnstaom.supabase.co"
+      "supabaseUrl": "https://cnrgrivqmuivxpnstaom.supabase.co",
+      "router": {},
+      "eas": {
+        "projectId": "1bb64a6e-4ac5-4cba-ba3f-0dce489f2cb6"
+      }
     },
     "ios": {
       "supportsTablet": false,
@@ -68,14 +72,25 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "ShieldCall AI uses the microphone to analyze this phone's conversation while a call is ongoing so it can warn you about scams.",
         "NSContactsUsageDescription": "ShieldCall AI reads your contacts so you can search and call people from this phone, like a Phone app.",
-        "LSApplicationQueriesSchemes": ["tel", "telprompt"],
+        "LSApplicationQueriesSchemes": [
+          "tel",
+          "telprompt"
+        ],
         "NSSpeechRecognitionUsageDescription": "ShieldCall AI uses the operating system's speech recognition to transcribe this phone's live conversation so it can score scam language. Audio may be sent to Apple or Google as your OS dictates.",
         "NSLocalNetworkUsageDescription": "ShieldCall AI may connect to an optional detector sidecar on your local network. The app works if that sidecar is not running.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
-        "UIBackgroundModes": ["voip", "audio", "fetch", "remote-notification", "processing"],
-        "BGTaskSchedulerPermittedIdentifiers": ["com.shieldcallai.background-analysis"],
+        "UIBackgroundModes": [
+          "voip",
+          "audio",
+          "fetch",
+          "remote-notification",
+          "processing"
+        ],
+        "BGTaskSchedulerPermittedIdentifiers": [
+          "com.shieldcallai.background-analysis"
+        ],
         "CFBundleAllowMixedLocalizations": true,
         "ITSAppUsesNonExemptEncryption": false
       },
@@ -95,22 +110,44 @@
       "intentFilters": [
         {
           "action": "android.intent.action.DIAL",
-          "category": ["android.intent.category.DEFAULT"]
+          "category": [
+            "android.intent.category.DEFAULT"
+          ]
         },
         {
           "action": "android.intent.action.DIAL",
-          "category": ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"],
-          "data": [{ "scheme": "tel" }]
+          "category": [
+            "android.intent.category.DEFAULT",
+            "android.intent.category.BROWSABLE"
+          ],
+          "data": [
+            {
+              "scheme": "tel"
+            }
+          ]
         },
         {
           "action": "android.intent.action.VIEW",
-          "category": ["android.intent.category.DEFAULT", "android.intent.category.BROWSABLE"],
-          "data": [{ "scheme": "tel" }]
+          "category": [
+            "android.intent.category.DEFAULT",
+            "android.intent.category.BROWSABLE"
+          ],
+          "data": [
+            {
+              "scheme": "tel"
+            }
+          ]
         },
         {
           "action": "android.intent.action.CALL",
-          "category": ["android.intent.category.DEFAULT"],
-          "data": [{ "scheme": "tel" }]
+          "category": [
+            "android.intent.category.DEFAULT"
+          ],
+          "data": [
+            {
+              "scheme": "tel"
+            }
+          ]
         }
       ],
       "permissions": [
@@ -127,7 +164,9 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.USE_FULL_SCREEN_INTENT"
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.WRITE_CONTACTS"
       ]
     },
     "web": {
@@ -172,6 +211,7 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "owner": "marveldigital"
   }
 }

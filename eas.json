@@ -14,8 +14,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": ""
+        "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co"
       }
     },
     "development-simulator": {
@@ -28,8 +27,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": ""
+        "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co"
       }
     },
     "preview": {
@@ -41,8 +39,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": ""
+        "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co"
       }
     },
     "production": {
@@ -54,17 +51,16 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": ""
+        "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co"
       }
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "appleId": "",
-        "ascAppId": "",
-        "appleTeamId": ""
+        "appleId": "mercelvubangsi@gmail.com",
+        "ascAppId": "6812847877",
+        "appleTeamId": "84WZ8YU55Q"
       },
       "android": {
         "serviceAccountKeyPath": "./google-service-account.json",
