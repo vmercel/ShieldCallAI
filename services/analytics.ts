@@ -19,6 +19,17 @@
 
 export const ANALYTICS_OPT_OUT_KEY = 'shieldcall_analytics_optout';
 
+/** Lazily resolve the consent helpers (keeps this module importable in node). */
+async function consentGranted(): Promise<boolean> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getConsentState } = require('./consent');
+    return (await getConsentState()) === 'granted';
+  } catch {
+    return false;
+  }
+}
+
 const ALLOWED_EVENTS = [
   'app_open',
   'ghost_mode_toggled',
@@ -98,6 +109,7 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null;
 async function asyncStorage(): Promise<{
   getItem(k: string): Promise<string | null>;
   setItem(k: string, v: string): Promise<void>;
+  multiRemove(keys: string[]): Promise<void>;
 }> {
   // Lazy require keeps this module importable in node unit tests.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -107,9 +119,13 @@ async function asyncStorage(): Promise<{
 async function ensureLoaded(): Promise<boolean> {
   if (enabledCache !== null) return enabledCache;
   try {
+    // GDPR/CCPA: analytics is opt-in. Nothing is collected until the user
+    // answers the first-launch consent banner ('granted'). The Settings
+    // switch is a separate opt-out on top of that choice.
+    const granted = await consentGranted();
     const AsyncStorage = await asyncStorage();
     const raw = await AsyncStorage.getItem(ANALYTICS_OPT_OUT_KEY);
-    enabledCache = raw !== 'true';
+    enabledCache = granted && raw !== 'true';
     const q = await AsyncStorage.getItem(QUEUE_KEY);
     if (q) {
       const arr = JSON.parse(q);
@@ -166,11 +182,15 @@ export async function isAnalyticsEnabled(): Promise<boolean> {
 }
 
 /**
- * Opt the user in or out. Opting out immediately drops unsent events.
- * The opt-in itself is reported; the opt-out is not (the user said no).
+ * Opt the user in or out. Opting in also records consent (the Settings
+ * switch works even if the banner was never answered). The opt-in itself
+ * is reported; the opt-out is not (the user said no).
  */
 export async function setAnalyticsEnabled(enabled: boolean): Promise<void> {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { setConsentState } = require('./consent');
+    await setConsentState(enabled ? 'granted' : 'denied');
     const AsyncStorage = await asyncStorage();
     await AsyncStorage.setItem(ANALYTICS_OPT_OUT_KEY, enabled ? 'false' : 'true');
     enabledCache = enabled;
@@ -184,6 +204,34 @@ export async function setAnalyticsEnabled(enabled: boolean): Promise<void> {
     // Keep the cached value consistent even if storage failed.
     enabledCache = enabled;
   }
+}
+
+/**
+ * Drop the in-memory queue and remove the persisted queue, opt-out flag,
+ * and consent record. Used by the Delete My Data flow. Never throws.
+ */
+export async function clearAnalyticsData(): Promise<void> {
+  queue = [];
+  enabledCache = null;
+  try {
+    const AsyncStorage = await asyncStorage();
+    await AsyncStorage.multiRemove([QUEUE_KEY, ANALYTICS_OPT_OUT_KEY]);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { clearConsentState } = require('./consent');
+    await clearConsentState();
+  } catch {
+    // Best effort.
+  }
+}
+
+/**
+ * Re-read consent + opt-out from storage into the cache. Call after the
+ * consent banner is answered, since ensureLoaded() may have cached the
+ * pre-consent (disabled) state at startup.
+ */
+export async function refreshAnalyticsConsent(): Promise<boolean> {
+  enabledCache = null;
+  return ensureLoaded();
 }
 
 /**

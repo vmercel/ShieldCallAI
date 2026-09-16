@@ -17,7 +17,8 @@
     "check:env": "node scripts/check-env.js",
     "check:ratelimit": "node scripts/check-ratelimit.js",
     "check:sentry": "node scripts/check-sentry.js",
-    "check:analytics": "node scripts/check-analytics.js"
+    "check:analytics": "node scripts/check-analytics.js",
+    "check:consent": "node scripts/check-consent.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.1",

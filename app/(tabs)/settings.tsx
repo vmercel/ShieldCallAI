@@ -3,14 +3,12 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
   Platform, Modal, TextInput, ActivityIndicator, Switch,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { checkAllPermissions, PermissionsState } from '../../services/permissionsService';
-import { supabase } from '../../services/supabaseClient';
 import { isAnalyticsEnabled, setAnalyticsEnabled, trackEvent } from '../../services/analytics';
 import { sidecarHealth } from '../../services/shieldcallSidecar';
 import { PhoneSetupSheet, callingIsReady } from '../../components/PhoneSetupSheet';
@@ -202,31 +200,6 @@ export default function SettingsScreen() {
     if (error) throw new Error(error);
   };
 
-  const handleDeleteData = () => {
-    const doDelete = async () => {
-      setSigningOut(true);
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase.from('call_records').delete().eq('user_id', user.id);
-        }
-        const keys = await AsyncStorage.getAllKeys();
-        const appKeys = keys.filter(k => k.toLowerCase().includes('shieldcallai') || k.toLowerCase().includes('shieldcall'));
-        if (appKeys.length) await AsyncStorage.multiRemove(appKeys);
-        if (isAuthenticated) await signOut();
-        router.replace('/onboarding' as any);
-      } catch {
-        setSigningOut(false);
-      }
-    };
-    showConfirm(
-      'Delete my data',
-      'This permanently deletes ShieldCall AI data on this device, including settings and call history. This cannot be undone.',
-      'Delete',
-      doDelete,
-    );
-  };
-
   const displayName = profile?.full_name ?? profile?.username ?? (isAuthenticated ? 'ShieldCall AI user' : 'Guest');
   const displayEmail = profile?.email ?? '';
   const displayPhone = profile?.phone ?? '';
@@ -395,14 +368,14 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionTitle}>Your data</Text>
         <View style={styles.section}>
-          <TouchableOpacity onPress={handleDeleteData} disabled={signingOut} activeOpacity={0.8}>
+          <TouchableOpacity onPress={() => router.push('/delete-data' as any)} activeOpacity={0.8}>
             <View style={styles.settingRow}>
               <View style={[styles.settingIcon, { backgroundColor: Colors.dangerGlow }]}>
                 <MaterialIcons name="delete-forever" size={20} color={Colors.danger} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.settingLabel, { color: Colors.danger }]}>Delete my data</Text>
-                <Text style={styles.settingSub}>Remove local settings and call history from this device</Text>
+                <Text style={styles.settingSub}>Delete your account and all data, with verification</Text>
               </View>
               <MaterialIcons name="chevron-right" size={18} color={Colors.textMuted} />
             </View>

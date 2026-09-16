@@ -93,7 +93,8 @@ const BLOCKS: Block[] = [
       'Do not start listening.',
       'Type text instead of using speech recognition.',
       'Do not run a LAN sidecar.',
-      'Delete local data from Settings. If you have an account, use Delete My Data or email privacy@shieldcallai.com.',
+      'Answer the usage-data banner on first launch (Accept or Decline); nothing is collected until you accept. Change it any time in Settings, under Usage analytics.',
+      'Delete all your data from Settings, under Delete my data, or email privacy@shieldcallai.com.',
     ],
   },
   {

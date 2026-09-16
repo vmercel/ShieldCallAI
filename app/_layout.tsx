@@ -17,6 +17,8 @@ import * as Linking from 'expo-linking';
 import { assertEnv } from '../services/env';
 import { initSentry } from '../services/sentry';
 import { initAnalytics, trackEvent } from '../services/analytics';
+import { getConsentState } from '../services/consent';
+import ConsentBanner from '../components/ConsentBanner';
 
 // Fail fast at startup when required env vars are missing, instead of
 // booting into a broken state (e.g. Supabase auth silently failing).
@@ -103,6 +105,18 @@ function AuthLoadingGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// First-launch usage-data consent (P3-1, GDPR/CCPA). Analytics is opt-in:
+// nothing is collected until the banner is answered, so the startup-cached
+// analytics state is disabled until the user accepts.
+function ConsentGate() {
+  const [state, setState] = React.useState<'granted' | 'denied' | 'unasked' | null>(null);
+  React.useEffect(() => {
+    getConsentState().then(setState).catch(() => setState('unasked'));
+  }, []);
+  if (state !== 'unasked') return null;
+  return <ConsentBanner onAnswered={() => setState(null)} />;
+}
+
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
@@ -121,6 +135,7 @@ export default function RootLayout() {
                 <Stack.Screen name="protect" options={{ presentation: 'fullScreenModal' }} />
                 <Stack.Screen name="privacy" />
                 <Stack.Screen name="terms" />
+                <Stack.Screen name="delete-data" />
                 <Stack.Screen name="ghost-mode" options={{ presentation: 'fullScreenModal' }} />
                 <Stack.Screen name="call-detail" />
                 <Stack.Screen name="incoming-call" options={{ presentation: 'fullScreenModal' }} />
@@ -129,6 +144,7 @@ export default function RootLayout() {
               </Stack>
             </AuthLoadingGate>
           </ErrorBoundary>
+          <ConsentGate />
         </AppProvider>
         </SettingsProvider>
       </AuthProvider>
