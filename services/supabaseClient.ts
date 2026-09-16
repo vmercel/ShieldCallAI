@@ -50,11 +50,34 @@ const createStorageAdapter = () => {
   return AsyncStorage;
 };
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    storage: createStorageAdapter(),
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
+// Lazy singleton — defers client creation until first access so the module
+// can be imported during SSR/render without throwing when env vars are not
+// yet injected (they are always present at runtime on the device).
+let _client: ReturnType<typeof createClient> | null = null;
+
+function getSupabaseClient() {
+  if (!_client) {
+    const key = SUPABASE_ANON_KEY;
+    if (!key) {
+      // During SSR render the env vars are not yet available; return a
+      // minimal stub so the import does not throw.
+      console.warn('[supabase] EXPO_PUBLIC_SUPABASE_ANON_KEY is not set — using stub client');
+    }
+    _client = createClient(SUPABASE_URL, key || 'placeholder-key-not-set', {
+      auth: {
+        storage: createStorageAdapter(),
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+      },
+    });
+  }
+  return _client;
+}
+
+// Named export for direct usage (Proxy delegates all calls to the lazy client)
+export const supabase = new Proxy({} as ReturnType<typeof createClient>, {
+  get(_target, prop) {
+    return (getSupabaseClient() as any)[prop];
   },
 });
