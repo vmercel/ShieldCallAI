@@ -51,7 +51,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://cnrgrivqmuivxpnstaom.supabase.co",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },
