@@ -9,6 +9,7 @@ import { SCAM_PATTERNS, ScamCategory } from '../../constants/scamPatterns';
 import { SentinelEngine } from '../../services/sentinelEngine';
 import { useCallRecords } from '../../hooks/useCallRecords';
 import { useCommunityThreats } from '../../hooks/useCommunityThreats';
+import { BrandMark } from '../../components/BrandMark';
 
 const MONTH = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
 
@@ -76,7 +77,7 @@ export default function InsightsScreen() {
       <View style={styles.reportCard}>
         <View style={styles.reportTop}>
           <View style={styles.reportIcon}>
-            <MaterialIcons name="shield" size={28} color={Colors.primary} />
+            <BrandMark size={28} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.reportTitle}>Personal Fraud Report</Text>

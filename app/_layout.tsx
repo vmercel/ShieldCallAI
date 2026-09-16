@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, ActivityIndicator, Text, StyleSheet, Platform } from 'react-native';
+import { BrandMark } from '../components/BrandMark';
 import { AppProvider } from '../contexts/AppContext';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { SettingsProvider } from '../contexts/SettingsContext';
@@ -100,6 +101,7 @@ function AuthLoadingGate({ children }: { children: React.ReactNode }) {
     return (
       <View style={loadingStyles.container}>
         <View style={loadingStyles.logoWrap}>
+          <BrandMark size={96} />
           <Text style={loadingStyles.logo}>ShieldCall AI</Text>
           <Text style={loadingStyles.sub}>Live Protect</Text>
         </View>

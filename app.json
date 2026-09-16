@@ -72,6 +72,10 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "ShieldCall AI uses the microphone to analyze this phone's conversation while a call is ongoing so it can warn you about scams.",
         "NSContactsUsageDescription": "ShieldCall AI reads your contacts so you can search and call people from this phone, like a Phone app.",
+        "NSCalendarsUsageDescription": "ShieldCall AI uses the calendar to set optional call reminders.",
+        "NSCalendarsFullAccessUsageDescription": "ShieldCall AI uses the calendar to set optional call reminders.",
+        "NSRemindersUsageDescription": "ShieldCall AI uses reminders to set optional call follow-ups.",
+        "NSRemindersFullAccessUsageDescription": "ShieldCall AI uses reminders to set optional call follow-ups.",
         "LSApplicationQueriesSchemes": [
           "tel",
           "telprompt"
@@ -181,7 +185,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "imageWidth": 220,
           "resizeMode": "contain",
           "backgroundColor": "#060E1E"
         }
@@ -200,9 +204,16 @@
         }
       ],
       [
+        "expo-calendar",
+        {
+          "calendarPermission": "ShieldCall AI uses the calendar to set optional call reminders.",
+          "remindersPermission": "ShieldCall AI uses reminders to set optional call follow-ups."
+        }
+      ],
+      [
         "expo-notifications",
         {
-          "icon": "./assets/images/logo.png",
+          "icon": "./assets/images/notification-icon.png",
           "color": "#00B4D8",
           "defaultChannel": "shieldcallai-alerts"
         }

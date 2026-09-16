@@ -12,6 +12,7 @@ import { checkAllPermissions, PermissionsState } from '../../services/permission
 import { isAnalyticsEnabled, setAnalyticsEnabled, trackEvent } from '../../services/analytics';
 import { sidecarHealth } from '../../services/shieldcallSidecar';
 import { PhoneSetupSheet, callingIsReady } from '../../components/PhoneSetupSheet';
+import { BrandMark } from '../../components/BrandMark';
 
 function SettingRow({ icon, label, sub, iconColor, children }: {
   icon: string; label: string; sub?: string; iconColor?: string; children?: React.ReactNode;
@@ -252,7 +253,7 @@ export default function SettingsScreen() {
             {initials ? (
               <Text style={styles.profileInitials}>{initials}</Text>
             ) : (
-              <MaterialIcons name="shield" size={32} color={Colors.primary} />
+              <BrandMark size={32} />
             )}
           </View>
           <View style={{ flex: 1 }}>

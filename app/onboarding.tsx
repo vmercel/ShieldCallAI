@@ -20,6 +20,7 @@ import { Colors, Spacing, Radius, FontSize, FontWeight } from '../constants/them
 import { supabase } from '../services/supabaseClient';
 import * as Linking from 'expo-linking';
 import { PermissionsScreen } from '../components/PermissionsScreen';
+import { BrandMark } from '../components/BrandMark';
 
 const { width, height } = Dimensions.get('window');
 const PERSONAS = ['Alex', 'Jordan', 'Morgan', 'Casey', 'Riley'];
@@ -388,7 +389,7 @@ function SignUpScreen({ onSignIn, onSuccess, onSignedIn, onSkip }: {
       {AlertModal}
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.authLogoWrap}>
-          <MaterialIcons name="shield" size={40} color={Colors.primary} />
+          <BrandMark size={48} />
         </View>
         <Text style={styles.authTitle}>Create Account</Text>
         <Text style={styles.authSubtitle}>Save your calls and profile to ShieldCall AI. Free.</Text>
@@ -461,7 +462,7 @@ function SignInScreen({ onSignUp, onSuccess, onForgotPassword, onSkip }: { onSig
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.authLogoWrap}>
-          <MaterialIcons name="shield" size={40} color={Colors.primary} />
+          <BrandMark size={48} />
         </View>
         <Text style={styles.authTitle}>Welcome Back</Text>
         <Text style={styles.authSubtitle}>Sign in to your ShieldCall AI account.</Text>
@@ -525,7 +526,7 @@ function PersonaScreen({ onActivate }: { onActivate: (name: string) => void }) {
   return (
     <View style={styles.personaContainer}>
       <View style={styles.personaLogoWrap}>
-        <MaterialIcons name="shield" size={56} color={Colors.primary} />
+        <BrandMark size={64} />
       </View>
       <Text style={styles.personaGreeting}>
         Welcome{profile?.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''}!
@@ -752,7 +753,11 @@ export default function OnboardingScreen() {
             <View style={styles.slideOverlay} />
             <View style={styles.slideContent}>
               <View style={styles.slideIconWrap}>
-                <MaterialIcons name={slide.icon as any} size={28} color={Colors.primary} />
+                {idx === 0 ? (
+                  <BrandMark size={32} />
+                ) : (
+                  <MaterialIcons name={slide.icon as any} size={28} color={Colors.primary} />
+                )}
               </View>
               <Text style={styles.slideTitle}>{slide.title}</Text>
               <Text style={styles.slideSubtitle}>{slide.subtitle}</Text>
