@@ -4,7 +4,6 @@
  */
 const {
   withInfoPlist,
-  withEntitlementsPlist,
   withAndroidManifest,
 } = require('@expo/config-plugins');
 
@@ -23,10 +22,11 @@ function withCallKeepIos(config) {
     return cfg;
   });
 
-  config = withEntitlementsPlist(config, cfg => {
-    cfg.modResults['com.apple.developer.pushkit.voice-over-ip'] = true;
-    return cfg;
-  });
+  // NOTE: com.apple.developer.pushkit.voice-over-ip is not a real Apple
+  // entitlement (the restricted variant is pushkit.unrestricted-voip).
+  // Injecting it breaks Xcode code signing because no provisioning
+  // profile can include it. PushKit needs only aps-environment +
+  // voip background mode, both already configured.
 
   return config;
 }
