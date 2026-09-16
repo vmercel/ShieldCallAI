@@ -1,6 +1,10 @@
 /**
  * CALLSHIELD AuthContext
  * Manages Supabase session, user, and profile state globally.
+ *
+ * All authentication goes through Supabase Auth. There is no offline,
+ * fabricated, or hard-coded session anywhere in this module: a user is
+ * authenticated if and only if Supabase issued a session.
  */
 
 import React, {
@@ -8,34 +12,15 @@ import React, {
 } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { Session, User } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 import { supabase } from '../services/supabaseClient';
-import { isLabEmail, isLabOtp, isLabPassword, LAB_EMAIL } from '../services/labAuth';
-
-const LAB_USER = {
-  id: '00000000-0000-4000-a000-000000000001',
-  email: LAB_EMAIL,
-  app_metadata: {},
-  user_metadata: { full_name: 'Lab Tester' },
-  aud: 'authenticated',
-  created_at: '2026-01-01T00:00:00.000Z',
-} as User;
-
-function labProfile(): UserProfile {
-  const now = new Date().toISOString();
-  return {
-    id: LAB_USER.id,
-    username: 'lab',
-    full_name: 'Lab Tester',
-    email: LAB_EMAIL,
-    phone: '+10000000000',
-    avatar_color: '#00B4D8',
-    persona_name: 'Alex',
-    ghost_mode_enabled: true,
-    plan: 'lab',
-    created_at: now,
-    updated_at: now,
-  };
-}
+import {
+  normalizeEmail,
+  isValidOtpFormat,
+  OTP_CODE_LENGTH,
+  DEV_TEST_EMAIL_VAR,
+  DEV_TEST_PASSWORD_VAR,
+} from '../services/authUtils';
 
 export interface UserProfile {
   id: string;
@@ -61,7 +46,13 @@ interface AuthContextType {
   verifyOtp: (email: string, token: string) => Promise<{ error: string | null }>;
   resendOtp: (email: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signInLabTester: () => Promise<{ error: string | null }>;
+  /**
+   * __DEV__-only convenience: signs in with the real Supabase test account
+   * configured via EXPO_PUBLIC_DEV_TEST_EMAIL / EXPO_PUBLIC_DEV_TEST_PASSWORD.
+   * This is a genuine signInWithPassword against Supabase, never a fabricated
+   * session. Unavailable in release builds and when the env vars are unset.
+   */
+  signInDevTester: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: string | null }>;
   refreshProfile: () => Promise<void>;
@@ -74,9 +65,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [labMode, setLabMode] = useState(false);
 
-  // ── Fetch user profile from Supabase ──────────────────────────────────────
+  // ── Ensure a profile row exists, without ever overwriting one ─────────────
+  // Insert-only: a fresh row is created from the auth user_metadata on first
+  // sign-in. Existing rows are NEVER updated here, so a profile the user
+  // edited in the app (persona name, avatar, etc.) cannot be clobbered by a
+  // later session refresh.
   const ensureProfile = useCallback(async (authed: User) => {
     const meta = authed.user_metadata ?? {};
     const row = {
@@ -91,7 +85,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       plan: 'free',
       updated_at: new Date().toISOString(),
     };
-    await supabase.from('user_profiles').upsert(row, { onConflict: 'id' });
+    const { error } = await supabase
+      .from('user_profiles')
+      .upsert(row, { onConflict: 'id', ignoreDuplicates: true });
+    if (error) {
+      console.warn('[auth] ensureProfile insert failed:', error.message);
+    }
   }, []);
 
   const fetchProfile = useCallback(async (authed: User) => {
@@ -102,10 +101,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .select('*')
         .eq('id', authed.id)
         .single();
-      if (!error && data) {
-        setProfile(data as UserProfile);
+      if (error) {
+        console.warn('[auth] fetchProfile failed:', error.message);
+        return;
       }
-    } catch {}
+      if (data) setProfile(data as UserProfile);
+    } catch (e: any) {
+      console.warn('[auth] fetchProfile threw:', e?.message ?? e);
+    }
   }, [ensureProfile]);
 
   const refreshProfile = useCallback(async () => {
@@ -127,7 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(s?.user ?? null);
       if (s?.user) fetchProfile(s.user);
       finish();
-    }).catch(() => {
+    }).catch((e: any) => {
+      console.warn('[auth] getSession failed:', e?.message ?? e);
       finish();
     }).finally(() => clearTimeout(t));
   }, []);
@@ -168,16 +172,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     fullName: string,
     phone: string,
-  ): Promise<{ error: string | null }> => {
+  ): Promise<{ error: string | null; needsOtp: boolean }> => {
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
+      email: normalizeEmail(email),
       password,
       options: {
         data: {
           full_name: fullName.trim(),
           phone: phone.trim(),
-          username: email.split('@')[0],
+          username: normalizeEmail(email).split('@')[0],
         },
+        // If the user taps the confirmation link instead of typing the OTP,
+        // bring them back into the app so the code can be exchanged.
+        emailRedirectTo: Linking.createURL('/'),
       },
     });
     if (error) return { error: error.message, needsOtp: true };
@@ -185,19 +192,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null, needsOtp: !data.session };
   }, [fetchProfile]);
 
-  const signInLabTester = useCallback(async (): Promise<{ error: string | null }> => {
-    if (!__DEV__) return { error: 'Lab tester is only available in development builds.' };
-    setLabMode(true);
-    setUser(LAB_USER);
-    setProfile(labProfile());
-    setSession({
-      access_token: 'lab-local',
-      refresh_token: 'lab-local',
-      expires_in: 86400,
-      expires_at: Math.floor(Date.now() / 1000) + 86400,
-      token_type: 'bearer',
-      user: LAB_USER,
-    } as Session);
+  const signInDevTester = useCallback(async (): Promise<{ error: string | null }> => {
+    if (!__DEV__) {
+      return { error: 'The dev test account is only available in development builds.' };
+    }
+    const email = (process.env[DEV_TEST_EMAIL_VAR] ?? '').trim();
+    const password = (process.env[DEV_TEST_PASSWORD_VAR] ?? '').trim();
+    if (!email || !password) {
+      return {
+        error:
+          'Dev test account not configured. Set EXPO_PUBLIC_DEV_TEST_EMAIL and ' +
+          'EXPO_PUBLIC_DEV_TEST_PASSWORD in your local .env (see .env.example), ' +
+          'using a real test account you created via sign-up.',
+      };
+    }
+    // Genuine Supabase password sign-in. No fabricated session.
+    const { error } = await supabase.auth.signInWithPassword({
+      email: normalizeEmail(email),
+      password,
+    });
+    if (error) return { error: error.message };
     return { error: null };
   }, []);
 
@@ -205,24 +219,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     token: string,
   ): Promise<{ error: string | null }> => {
-    if (__DEV__ && isLabOtp(token)) {
-      return signInLabTester();
+    if (!isValidOtpFormat(token)) {
+      return { error: `Enter the ${OTP_CODE_LENGTH}-digit code from your email.` };
     }
     const { error } = await supabase.auth.verifyOtp({
-      email: email.trim().toLowerCase(),
+      email: normalizeEmail(email),
       token: token.trim(),
       type: 'signup',
     });
     if (error) return { error: error.message };
     return { error: null };
-  }, [signInLabTester]);
+  }, []);
 
   const resendOtp = useCallback(async (
     email: string,
   ): Promise<{ error: string | null }> => {
     const { error } = await supabase.auth.resend({
       type: 'signup',
-      email: email.trim().toLowerCase(),
+      email: normalizeEmail(email),
     });
     if (error) return { error: error.message };
     return { error: null };
@@ -232,33 +246,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
   ): Promise<{ error: string | null }> => {
-    if (__DEV__ && isLabEmail(email) && isLabPassword(password)) {
-      return signInLabTester();
-    }
     const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
+      email: normalizeEmail(email),
       password,
     });
     if (error) return { error: error.message };
     return { error: null };
-  }, [signInLabTester]);
+  }, []);
 
   const signOut = useCallback(async () => {
-    setLabMode(false);
-    await supabase.auth.signOut();
-    setSession(null);
-    setUser(null);
-    setProfile(null);
+    try {
+      await supabase.auth.signOut();
+    } catch (e: any) {
+      console.warn('[auth] signOut failed:', e?.message ?? e);
+    } finally {
+      // Local auth state is always cleared, even if the server call failed.
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+    }
   }, []);
 
   const updateProfile = useCallback(async (
     updates: Partial<UserProfile>,
   ): Promise<{ error: string | null }> => {
     if (!user) return { error: 'Not authenticated' };
-    if (labMode) {
-      setProfile(prev => (prev ? { ...prev, ...updates, updated_at: new Date().toISOString() } : prev));
-      return { error: null };
-    }
     const { error } = await supabase
       .from('user_profiles')
       .update({ ...updates, updated_at: new Date().toISOString() })
@@ -266,7 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) return { error: error.message };
     await fetchProfile(user);
     return { error: null };
-  }, [user, fetchProfile, labMode]);
+  }, [user, fetchProfile]);
 
   return (
     <AuthContext.Provider value={{
@@ -274,12 +286,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       profile,
       isLoading,
-      isAuthenticated: !!session || labMode,
+      isAuthenticated: !!session,
       signUp,
       verifyOtp,
       resendOtp,
       signIn,
-      signInLabTester,
+      signInDevTester,
       signOut,
       updateProfile,
       refreshProfile,

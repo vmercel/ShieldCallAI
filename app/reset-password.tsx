@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../constants/theme';
 import { supabase } from '../services/supabaseClient';
+import { validatePasswordPair } from '../services/authUtils';
 import { useApp } from '../contexts/AppContext';
 
 export default function ResetPasswordScreen() {
@@ -23,12 +24,9 @@ export default function ResetPasswordScreen() {
 
   const handleSave = async () => {
     setError('');
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
-      return;
-    }
-    if (password !== confirm) {
-      setError('Passwords do not match.');
+    const pwdError = validatePasswordPair(password, confirm);
+    if (pwdError) {
+      setError(pwdError);
       return;
     }
     setBusy(true);

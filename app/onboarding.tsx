@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
-import { LAB_OTP } from '../services/labAuth';
+import { isDevTesterConfigured, validatePasswordPair } from '../services/authUtils';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../constants/theme';
 import { supabase } from '../services/supabaseClient';
 import * as Linking from 'expo-linking';
@@ -254,11 +254,6 @@ function OtpScreen({
           <MaterialIcons name="info-outline" size={14} color={Colors.primary} />
           <Text style={styles.privacyText}>Check your spam folder if you don not see the email. The code expires in 10 minutes.</Text>
         </View>
-        {__DEV__ ? (
-          <Text style={[styles.privacyText, { textAlign: 'center', marginTop: 8 }]}>
-            Dev OTP (no email): {LAB_OTP}
-          </Text>
-        ) : null}
         <TouchableOpacity onPress={onBack} style={styles.switchBtn} activeOpacity={0.8}>
           <Text style={styles.switchText}>Wrong email? <Text style={styles.switchLink}>Go back</Text></Text>
         </TouchableOpacity>
@@ -377,8 +372,8 @@ function SignUpScreen({ onSignIn, onSuccess, onSignedIn, onSkip }: {
     if (!fullName.trim()) return setFieldError('Please enter your full name.');
     if (!email.trim() || !email.includes('@')) return setFieldError('Please enter a valid email address.');
     if (!phone.trim()) return setFieldError('Please enter your phone number.');
-    if (password.length < 6) return setFieldError('Password must be at least 6 characters.');
-    if (password !== confirmPwd) return setFieldError('Passwords do not match.');
+    const pwdError = validatePasswordPair(password, confirmPwd);
+    if (pwdError) return setFieldError(pwdError);
 
     setLoading(true);
     const { error, needsOtp } = await signUp(email, password, fullName, phone);
@@ -449,7 +444,7 @@ function SignInScreen({ onSignUp, onSuccess, onForgotPassword, onSkip }: { onSig
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [fieldError, setFieldError] = useState('');
-  const { signIn, signInLabTester } = useAuth();
+  const { signIn, signInDevTester } = useAuth();
 
   const handleSignIn = async () => {
     setFieldError('');
@@ -502,19 +497,19 @@ function SignInScreen({ onSignUp, onSuccess, onForgotPassword, onSkip }: { onSig
         <TouchableOpacity onPress={onSkip} style={styles.switchBtn} activeOpacity={0.8}>
           <Text style={styles.switchLink}>Use on this phone without saving history</Text>
         </TouchableOpacity>
-        {__DEV__ ? (
+        {__DEV__ && isDevTesterConfigured() ? (
           <TouchableOpacity
             style={[styles.switchBtn, { marginTop: 8 }]}
             onPress={async () => {
               setLoading(true);
-              const { error } = await signInLabTester();
+              const { error } = await signInDevTester();
               setLoading(false);
               if (error) setFieldError(error);
               else onSuccess();
             }}
             activeOpacity={0.8}
           >
-            <Text style={styles.switchLink}>Continue as lab tester (no email)</Text>
+            <Text style={styles.switchLink}>Continue as dev tester (real test account)</Text>
           </TouchableOpacity>
         ) : null}
       </ScrollView>
@@ -572,7 +567,7 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { setOnboarded, setPersonaName, isOnboarded } = useApp();
-  const { updateProfile, signInLabTester } = useAuth();
+  const { updateProfile, signInDevTester } = useAuth();
 
   const goSlide = (idx: number) => {
     setSlideIndex(idx);
@@ -784,10 +779,10 @@ export default function OnboardingScreen() {
         <TouchableOpacity onPress={() => setScreen('signin')} style={styles.alreadyBtn} activeOpacity={0.8}>
           <Text style={styles.alreadyText}>Have an account? <Text style={styles.alreadyLink}>Sign in</Text></Text>
         </TouchableOpacity>
-        {__DEV__ ? (
+        {__DEV__ && isDevTesterConfigured() ? (
           <TouchableOpacity
             onPress={async () => {
-              const { error } = await signInLabTester();
+              const { error } = await signInDevTester();
               if (error) return;
               await setOnboarded();
               router.replace('/(tabs)');
@@ -795,7 +790,7 @@ export default function OnboardingScreen() {
             style={styles.alreadyBtn}
             activeOpacity={0.8}
           >
-            <Text style={styles.alreadyLink}>Skip signup — lab tester</Text>
+            <Text style={styles.alreadyLink}>Skip signup — dev tester (real account)</Text>
           </TouchableOpacity>
         ) : null}
       </View>

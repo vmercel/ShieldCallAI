@@ -15,6 +15,7 @@ import { getAllContacts } from '../services/contactsService';
 import { supabase } from '../services/supabaseClient';
 import * as Linking from 'expo-linking';
 import { assertEnv } from '../services/env';
+import { classifyAuthDeepLink } from '../services/authUtils';
 import { initSentry } from '../services/sentry';
 import { initAnalytics, trackEvent } from '../services/analytics';
 import { getConsentState } from '../services/consent';
@@ -32,16 +33,21 @@ initAnalytics().catch(() => {});
 trackEvent('app_open').catch(() => {});
 
 async function handleAuthUrl(url: string | null) {
-  if (!url) return;
-  const isReset = url.includes('reset-password') || url.includes('type=recovery');
-  try {
-    const parsed = Linking.parse(url);
-    const code = parsed.queryParams?.code;
-    if (typeof code === 'string' && code.length > 0) {
-      await supabase.auth.exchangeCodeForSession(code);
+  const classified = classifyAuthDeepLink(url);
+  if (classified.kind === 'none') return;
+  if (classified.code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(classified.code);
+    if (error) {
+      // Surfaced honestly: the link was bad/expired. The reset screen's save
+      // will report the real failure instead of pretending it worked.
+      console.warn('[auth] exchangeCodeForSession failed:', error.message);
     }
-  } catch {}
-  if (isReset) router.push('/reset-password');
+  }
+  if (classified.kind === 'recovery') {
+    router.push('/reset-password');
+  }
+  // 'session-code' links (e.g. email confirmation) need no navigation: the
+  // exchanged session flows through onAuthStateChange and route gating.
 }
 
 // Initialize global services on app start
