@@ -368,6 +368,12 @@ export default function SettingsScreen() {
               thumbColor={analyticsEnabled ? Colors.primary : Colors.textMuted}
             />
           </SettingRow>
+          <View style={styles.divider} />
+          <TouchableOpacity onPress={() => router.push('/service-status' as any)} activeOpacity={0.8}>
+            <SettingRow icon="cloud-queue" label="Service status" sub="Check which backend services are live right now">
+              <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
+            </SettingRow>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.sectionTitle}>Your data</Text>

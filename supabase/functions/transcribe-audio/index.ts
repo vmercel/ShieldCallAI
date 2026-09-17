@@ -26,6 +26,17 @@ Deno.serve(async (req: Request) => {
 
   try {
     const deepgramKey = Deno.env.get('DEEPGRAM_API_KEY');
+
+    const body = await req.json().catch(() => ({}));
+
+    // Cheap health probe: answers without transcribing (no spend)
+    if (body?.ping === true) {
+      return new Response(
+        JSON.stringify({ ok: true, service: 'transcribe-audio', deepgramConfigured: !!deepgramKey }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (!deepgramKey) {
       // Graceful no-op when key is not configured — client falls back to manual input
       return new Response(
@@ -34,7 +45,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const body = await req.json();
     const { audioBase64, mimeType = 'audio/m4a', language = 'en' } = body;
 
     if (!audioBase64) {

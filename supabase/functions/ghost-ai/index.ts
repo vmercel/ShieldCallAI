@@ -60,6 +60,16 @@ Deno.serve(async (req: Request) => {
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-haiku-4-5-20251001';
 
+    const body = await req.json().catch(() => ({}));
+
+    // Cheap health probe: answers without calling the AI (no spend)
+    if (body?.ping === true) {
+      return new Response(
+        JSON.stringify({ ok: true, service: 'ghost-ai', aiConfigured: !!apiKey, model }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (!apiKey) {
       throw new Error('AI provider credentials not configured');
     }
@@ -73,7 +83,7 @@ Deno.serve(async (req: Request) => {
       threatFlags,
       isExposeMode,
       deepfakeConfidence,
-    } = await req.json();
+    } = body;
 
     // Build dynamic system prompt
     const systemPrompt = SYSTEM_PROMPT

@@ -20,7 +20,8 @@
     "check:analytics": "node scripts/check-analytics.js",
     "check:consent": "node scripts/check-consent.js",
     "check:auth": "node scripts/check-auth.js",
-    "check:prod-gating": "node scripts/check-prod-gating.js"
+    "check:prod-gating": "node scripts/check-prod-gating.js",
+    "check:service-health": "node scripts/check-service-health.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.1",
