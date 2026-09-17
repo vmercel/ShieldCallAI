@@ -126,6 +126,7 @@ Deno.serve(async (req: Request) => {
       throw new Error(`AI provider: ${aiResponse.status} ${errText}`);
     }
 
+    const aiData = await aiResponse.json();
     const rawText = aiData.content?.find((b: { type: string; text?: string }) => b.type === 'text')?.text ?? '{}';
     // Claude may wrap JSON in markdown fences or add commentary; extract the object
     const fenceStripped = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
