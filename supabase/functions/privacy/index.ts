@@ -96,7 +96,7 @@ const HTML = `<!DOCTYPE html>
     <ul>
       <li><strong>Supabase</strong> (database and authentication) — <a href="https://supabase.com/privacy" target="_blank">Privacy Policy</a></li>
       <li><strong>Deepgram</strong> (speech-to-text transcription) — <a href="https://deepgram.com/privacy" target="_blank">Privacy Policy</a></li>
-      <li><strong>Google Gemini / AI Provider</strong> (Ghost Mode AI responses) — processing is limited to anonymized transcript text during active sessions only.</li>
+      <li><strong>Anthropic Claude</strong> (Ghost Mode AI responses) — processing is limited to anonymized transcript text during active sessions only.</li>
     </ul>
     <p>These providers are contractually required to protect your data and may not use it for their own purposes.</p>
 

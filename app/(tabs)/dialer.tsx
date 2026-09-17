@@ -1,5 +1,5 @@
 /**
- * ShieldCall AI Dialer — Powered by ShieldCall AI (Gemini 3 Flash)
+ * ShieldCall AI Dialer — Powered by ShieldCall AI
  *
  * Three interaction modes:
  * 1. VOICE COMMAND  — Say "Call Mom" → instant dial
@@ -489,7 +489,7 @@ function AIAgentTab() {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.agentTitle}>AI Call Agent</Text>
-          <Text style={styles.agentSub}>Powered by ShieldCall AI · Gemini 3 Flash</Text>
+          <Text style={styles.agentSub}>Powered by ShieldCall AI</Text>
         </View>
         <View style={styles.agentOnBadge}>
           <View style={styles.agentDot} />

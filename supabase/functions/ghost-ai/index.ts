@@ -1,6 +1,6 @@
 /**
  * ShieldCall AI Ghost AI Edge Function
- * Powers the Ghost Mode conversational AI (Gemini Flash)
+ * Powers the Ghost Mode conversational AI (Anthropic Claude)
  *
  * Receives the full conversation history + SENTINEL threat context
  * and generates a contextually adaptive AI persona response.
@@ -57,10 +57,10 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const apiKey = Deno.env.get('ONSPACE_AI_API_KEY');
-    const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-3-5-haiku-20241022';
 
-    if (!apiKey || !baseUrl) {
+    if (!apiKey) {
       throw new Error('AI provider credentials not configured');
     }
 
@@ -86,29 +86,25 @@ Deno.serve(async (req: Request) => {
       threatContext = `\n\nCURRENT THREAT ANALYSIS:\n- Threat Score: ${threatScore}%\n- Threat Level: ${threatLevel?.toUpperCase()}\n- Detected Flags: ${threatFlags?.join(', ') || 'none'}\n- Expose Mode: ${isExposeMode ? 'ACTIVE — waste their time' : 'OFF'}\n- Deepfake Voice Confidence: ${deepfakeConfidence || 0}%`;
     }
 
-    // Convert app messages to OpenAI format
-    const apiMessages = [
-      {
-        role: 'system',
-        content: systemPrompt + threatContext,
-      },
-      ...(messages || []).map((m: { role: string; text: string }) => ({
-        role: m.role === 'ai' ? 'assistant' : 'user',
-        content: m.text,
-      })),
-    ];
+    // Convert app messages to Anthropic format (system prompt is top-level)
+    const apiMessages = (messages || []).map((m: { role: string; text: string }) => ({
+      role: m.role === 'ai' ? 'assistant' : 'user',
+      content: m.text,
+    }));
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: apiMessages,
+        model,
         max_tokens: 150, // Concise phone responses
         temperature: 0.8,
+        system: systemPrompt + threatContext,
+        messages: apiMessages,
       }),
     });
 
@@ -118,7 +114,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content ?? 'I understand. Could you please elaborate?';
+    const reply = data.content?.find((b: { type: string; text?: string }) => b.type === 'text')?.text
+      ?? 'I understand. Could you please elaborate?';
 
     return new Response(JSON.stringify({ reply }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

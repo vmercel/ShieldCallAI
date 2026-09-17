@@ -2,7 +2,7 @@
 
 **Date:** May 2026 (Updated after pull 784d13a)
 **Scope:** Full codebase review for production-readiness, functionality completeness, and UX quality
-**Stack:** React Native / Expo (SDK 53) · Supabase Backend · OnSpace AI (Gemini Flash) · Claude claude-3-5-haiku-20241022 · TypeScript
+**Stack:** React Native / Expo (SDK 53) · Supabase Backend · Anthropic Claude (claude-3-5-haiku-20241022) · TypeScript
 
 ---
 
@@ -82,7 +82,7 @@ CALLSHIELD has advanced significantly in this pull. The most critical gaps from 
 - Composite 70% NLP + 30% acoustic threat score
 
 ### 1.7 Ghost Mode AI (`app/ghost-mode.tsx` + `hooks/useGhostMode.ts`)
-- Full conversational AI powered by OnSpace AI edge function (Gemini Flash)
+- Full conversational AI powered by Anthropic Claude edge function
 - TTS voice output via `expo-speech`
 - Intelligence dashboard, Expose Mode, session end persistence
 - SENTINEL™ analysis on each caller turn
@@ -424,7 +424,7 @@ CALLSHIELD has advanced significantly in this pull. The most critical gaps from 
 | Profile editing | Fully implemented | Name + phone editable |
 | Ghost Mode (manual input) | Fully implemented | Simulation mode |
 | Ghost Mode (auto voice intercept) | Not implemented | Requires native STT + telephony |
-| Ghost AI Edge Function | Fully implemented | Gemini Flash, contextually adaptive |
+| Ghost AI Edge Function | Fully implemented | Anthropic Claude, contextually adaptive |
 | Live Call Analysis (web) | Fully implemented | Web Speech API + Claude edge fn |
 | Live Call Analysis (native) | Partially implemented | Manual text entry only |
 | Incoming Call screen | Partially implemented | Demo only + scam notification |

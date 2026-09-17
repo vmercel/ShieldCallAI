@@ -25,10 +25,10 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const apiKey = Deno.env.get('ONSPACE_AI_API_KEY');
-    const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-3-5-haiku-20241022';
 
-    if (!apiKey || !baseUrl) {
+    if (!apiKey) {
       throw new Error('AI provider credentials not configured');
     }
 
@@ -38,23 +38,24 @@ Deno.serve(async (req: Request) => {
       .map((t: { speaker: string; text: string }) => `[${t.speaker.toUpperCase()}]: ${t.text}`)
       .join('\n');
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
+        model,
+        max_tokens: 1000,
+        temperature: 0.3,
+        system: SYSTEM_PROMPT,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
           {
             role: 'user',
-            content: `Analyze this call:\n\nCaller: ${callerName} (${callerNumber})\nDuration: ${duration}s\nThreat Score: ${threatScore}%\nThreat Level: ${threatLevel}\nDetected Flags: ${(flags || []).join(', ') || 'none'}\n\nTranscript:\n${transcriptText || 'No transcript available'}`,
+            content: `Analyze this call:\n\nCaller: ${callerName} (${callerNumber})\nDuration: ${duration}s\nThreat Score: ${threatScore}%\nThreat Level: ${threatLevel}\nDetected Flags: ${(flags || []).join(', ') || 'none'}\n\nTranscript:\n${transcriptText || 'No transcript available'}\n\nReturn your answer as a JSON object.`,
           },
         ],
-        temperature: 0.3,
-        response_format: { type: 'json_object' },
       }),
     });
 
@@ -64,7 +65,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content ?? '{}';
+    const content = data.content?.find((b: { type: string; text?: string }) => b.type === 'text')?.text ?? '{}';
 
     let result;
     try {

@@ -6,7 +6,7 @@ Owner decisions. Do not reopen these in implementation.
 
 A free iOS/Android app. One job: while a call is on speaker, this phone listens on its microphone, scores scam language, warns on screen, never hangs up, never joins the carrier call.
 
-Brand: **ShieldCall**. Not CALLSHIELD, not OnSpace.
+Brand: **ShieldCall**. Not CALLSHIELD.
 
 ## In v1
 

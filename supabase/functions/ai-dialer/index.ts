@@ -83,10 +83,10 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const apiKey = Deno.env.get('ONSPACE_AI_API_KEY');
-    const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-3-5-haiku-20241022';
 
-    if (!apiKey || !baseUrl) {
+    if (!apiKey) {
       throw new Error('AI provider credentials not configured');
     }
 
@@ -100,23 +100,24 @@ Deno.serve(async (req: Request) => {
     }
 
     // Call the AI provider to generate the full phased call simulation
-    const aiResponse = await fetch(`${baseUrl}/chat/completions`, {
+    const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
+        model,
+        max_tokens: 2000,
+        temperature: 0.75,
+        system: SYSTEM_PROMPT,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
           {
             role: 'user',
-            content: `Complete this task via phone call:\n\n"${instruction}"\n\nUser context: ${userContext || 'Standard user, no special context.'}`,
+            content: `Complete this task via phone call:\n\n"${instruction}"\n\nUser context: ${userContext || 'Standard user, no special context.'}\n\nReturn your answer as a JSON object with keys: phases, outcome, summary, actionItems, callDetails, totalDuration.`,
           },
         ],
-        temperature: 0.75,
-        response_format: { type: 'json_object' },
       }),
     });
 
@@ -126,7 +127,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const aiData = await aiResponse.json();
-    const content = aiData.choices?.[0]?.message?.content ?? '{}';
+    const content = aiData.content?.find((b: { type: string; text?: string }) => b.type === 'text')?.text ?? '{}';
 
     let parsed: any;
     try {

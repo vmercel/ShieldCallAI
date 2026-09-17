@@ -1,7 +1,7 @@
 /**
  * useGhostMode Hook — UPGRADED with real AI responses
  *
- * Ghost Mode now uses the Ghost AI Edge Function (Gemini 3 Flash)
+ * Ghost Mode now uses the Ghost AI Edge Function (Anthropic Claude)
  * instead of the finite-state machine. Every caller utterance is:
  * 1. Analyzed by SENTINEL™ NLP engine for threat scoring
  * 2. Sent to the AI provider with full context (messages, threat level, flags)

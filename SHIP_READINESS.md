@@ -23,11 +23,11 @@ Here is what is actually broken, in order of severity:
 
 5. **The .env file is committed to git.** The `.gitignore` excludes `.env*.local` but not `.env`. Your Supabase URL and anon key are in version history. Rotate those keys immediately, then fix the gitignore.
 
-6. **DEEPGRAM_API_KEY and ONSPACE_AI_API_KEY are not configured anywhere visible.** The edge functions that power live transcription (Deepgram) and Ghost Mode AI responses silently fall back to no-ops when these keys are missing. The two headline features of the app — real-time transcription and AI ghost calling — are both silently non-functional without these secrets being set in Supabase's edge function environment.
+6. **DEEPGRAM_API_KEY and ANTHROPIC_API_KEY are not configured anywhere visible.** The edge functions that power live transcription (Deepgram) and Ghost Mode AI responses silently fall back to no-ops when these keys are missing. The two headline features of the app — real-time transcription and AI ghost calling — are both silently non-functional without these secrets being set in Supabase's edge function environment.
 
 ### HIGH — Will cause user distrust, bad reviews, or regulatory issues
 
-7. **The app claims "All audio processing is on-device" but this is false.** The onboarding and privacy section both state audio never leaves the device. In reality, audio chunks are uploaded to a Supabase Edge Function which sends them to Deepgram's cloud API for transcription, and conversation text is sent to an external AI API (OnSpace AI / Gemini) for Ghost Mode. This is a deceptive data practice. Fix the copy to be accurate — "audio is transcribed via a secure cloud service and transcripts are processed by AI." This is an App Store review guideline violation and a GDPR/CCPA issue.
+7. **The app claims "All audio processing is on-device" but this is false.** The onboarding and privacy section both state audio never leaves the device. In reality, audio chunks are uploaded to a Supabase Edge Function which sends them to Deepgram's cloud API for transcription, and conversation text is sent to Anthropic Claude for Ghost Mode. This is a deceptive data practice. Fix the copy to be accurate — "audio is transcribed via a secure cloud service and transcripts are processed by AI." This is an App Store review guideline violation and a GDPR/CCPA issue.
 
 8. **"Deepfake Voice Detection" is amplitude variance heuristics, not deepfake detection.** The AcousticSentinel monitors microphone dB levels for monotone cadence. This is a noise floor check — not ML-based voice synthesis detection. The label "Deepfake Voice Detection" in settings is false advertising. Rename it to "Acoustic Anomaly Detection" or something accurate.
 
@@ -41,7 +41,7 @@ Here is what is actually broken, in order of severity:
 
 ### MEDIUM — Will cause bad UX, crashes, or review flags
 
-13. **`package.json` name is `"onspace-app"`.** This is a template artifact. It affects EAS build metadata, OTA updates, and Expo project identity.
+13. **`package.json` name was a template artifact.** It affects EAS build metadata, OTA updates, and Expo project identity.
 
 14. **Dependency bloat is extreme and likely causes build failures.** The package.json includes Apollo Client, GraphQL, Redux, React Native Maps, React Native WebRTC, `snack-content`, `expo-manifests`, `react-native-fade-in-image`, `react-native-infinite-scroll-view`, and dozens of other packages that are not imported anywhere in the app code. This inflates the bundle by tens of megabytes and likely causes native build errors due to conflicting native modules.
 
@@ -80,7 +80,7 @@ Here is what is actually broken, in order of severity:
 - [x] **Add `react-native-callkeep` to `package.json` dependencies.** Run `pnpm add react-native-callkeep` and add the required plugin configuration to `app.json`.
 - [x] **Configure CallKit plugin in `app.json`** under `plugins` with app name and entitlements.
 - [ ] **Set DEEPGRAM_API_KEY in Supabase Edge Function secrets.** Go to Supabase Dashboard > Edge Functions > Secrets and add the key. Without it, all native transcription silently returns empty strings.
-- [ ] **Set ONSPACE_AI_API_KEY (or GEMINI_API_KEY) in Supabase Edge Function secrets.** Without it, Ghost Mode AI returns nothing.
+- [ ] **Set ANTHROPIC_API_KEY  in Supabase Edge Function secrets.** Without it, Ghost Mode AI returns nothing.
 - [ ] **Implement In-App Purchases using `expo-in-app-purchases` or `react-native-iap`.** Create the following IAP products in App Store Connect and Google Play Console:
   - `callshield_plus_monthly` — $6.99/month
   - `callshield_family_monthly` — $12.99/month
@@ -88,7 +88,7 @@ Here is what is actually broken, in order of severity:
 - [ ] **Implement server-side purchase receipt validation** via a Supabase Edge Function that verifies App Store/Play Store receipts and updates the `plan` column in the user profile.
 - [ ] **Add a "Restore Purchases" button** to Settings. Required by App Store guidelines.
 - [x] **Fix `.gitignore` to exclude `.env`.** Add `.env` to `.gitignore`. Then rotate Supabase anon key immediately (it is already in git history).
-- [x] **Rename `package.json` `name` field** from `"onspace-app"` to `"callshield"`.
+- [x] **Rename `package.json` `name` field** from the template artifact to `"callshield"`.
 - [x] **Remove unused dependencies.** Removed 30+ unused packages including `@apollo/client`, `graphql`, `react-redux`, `redux`, `redux-thunk`, `react-native-maps`, `react-native-webrtc`, `snack-content`, and more.
 - [x] **Create `eas.json`** with `development`, `preview`, and `production` build profiles. Configure `ios.distribution: store` and `android.buildType: app-bundle` for production.
 - [ ] **Implement PushKit registration for iOS VoIP.** Without PushKit, CallKit cannot reliably display incoming calls when the app is backgrounded. This requires a native module or a package like `react-native-voip-push-notification`.
@@ -138,7 +138,7 @@ Here is what is actually broken, in order of severity:
 - [ ] **Wire up the AI Dialer tab** (`dialer.tsx`) properly — verify it is functional or hide the tab until it is.
 - [ ] **Add an in-app App Store rating prompt** using `expo-store-review` (already in dependencies). Trigger after 3 analyzed calls, not on first launch.
 - [x] **Remove "Prototype" from the version footer** in Settings. Changed to "CALLSHIELD v1.0.0".
-- [ ] **Decide on company branding.** The app alternates between "CallShield," "CALLSHIELD," and "OnSpace AI." Choose one and make it consistent across all UI, metadata, and legal documents.
+- [ ] **Decide on company branding.** The app alternates between "CallShield," "CALLSHIELD," and other names. Choose one and make it consistent across all UI, metadata, and legal documents.
 - [ ] **Test on physical devices**, not simulators. CallKit, microphone access, and VoIP push do not work reliably on simulators.
 - [ ] **Test on Android physical device.** The Android telecom/ConnectionService integration via react-native-callkeep behaves differently than iOS CallKit and needs independent validation.
 - [ ] **Load test the edge functions** before launch. Simultaneous Ghost Mode sessions could overwhelm Supabase compute limits on the free/pro tier.
@@ -153,7 +153,7 @@ Here is what is actually broken, in order of severity:
 | Authentication (Supabase Auth) | Functional |
 | SENTINEL NLP Engine | Functional (but mislabeled as "AI") |
 | AcousticSentinel | Functional if microphone permission is granted |
-| Ghost Mode AI | Broken — ONSPACE_AI_API_KEY not set |
+| Ghost Mode AI | Broken — ANTHROPIC_API_KEY not set |
 | Live Transcription | Broken — DEEPGRAM_API_KEY not set, callkeep missing |
 | CallKit Integration | Dependency installed and configured — requires native build to test |
 | Subscriptions / IAP | Completely missing — App Store rejection guaranteed |
