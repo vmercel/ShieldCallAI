@@ -19,7 +19,8 @@
     "check:sentry": "node scripts/check-sentry.js",
     "check:analytics": "node scripts/check-analytics.js",
     "check:consent": "node scripts/check-consent.js",
-    "check:auth": "node scripts/check-auth.js"
+    "check:auth": "node scripts/check-auth.js",
+    "check:prod-gating": "node scripts/check-prod-gating.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.1",

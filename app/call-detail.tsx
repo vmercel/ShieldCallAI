@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../constants/theme';
-import { ThreatLevel } from '../constants/mockData';
+import { ThreatLevel } from '../constants/callTypes';
 import { ThreatService } from '../services/threatService';
 import { SentinelEngine } from '../services/sentinelEngine';
 import { callRecordsService, CallRecord } from '../services/callRecordsService';

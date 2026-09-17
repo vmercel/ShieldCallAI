@@ -3,7 +3,7 @@
  * Maintains backward-compatibility with legacy screens
  * while delegating all analysis to the real SENTINEL engine.
  */
-import { ThreatLevel } from '../constants/mockData';
+import { ThreatLevel } from '../constants/callTypes';
 import { SentinelEngine } from './sentinelEngine';
 
 const _engine = new SentinelEngine();

@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ThreatLevel } from '../constants/mockData';
+import { ThreatLevel } from '../constants/callTypes';
 import { SentinelEngine, ThreatWindow, ConversationAnalysis } from '../services/sentinelEngine';
 import { AcousticSentinel, AcousticSnapshot } from '../services/acousticSentinel';
 

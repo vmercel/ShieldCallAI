@@ -127,6 +127,12 @@ export default function LabCallScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <View style={styles.devBanner}>
+          <MaterialIcons name="engineering" size={18} color={Colors.warning} />
+          <Text style={styles.devBannerText}>
+            DEV TOOL — engineering screen for the local shieldcall-core sidecar. Not part of the product path.
+          </Text>
+        </View>
         <Text style={styles.banner}>
           Experiment 0. Copies text (and later PCM) to a local Python sidecar. Does not hang up.
           Does not auto-quiz. If the sidecar dies, this screen stays up.
@@ -243,6 +249,12 @@ const styles = StyleSheet.create({
   headerTitle: { color: Colors.text, fontSize: FontSize.lg, fontWeight: FontWeight.bold as any },
   body: { padding: Spacing.lg, paddingBottom: 48, gap: 10 },
   banner: { color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 20 },
+  devBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1, borderColor: Colors.warning, borderRadius: Radius.md,
+    padding: 12, backgroundColor: Colors.bgCard,
+  },
+  devBannerText: { flex: 1, color: Colors.warning, fontSize: FontSize.sm, fontWeight: '700', lineHeight: 18 },
   consentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 8 },
   consentText: { flex: 1, color: Colors.text, fontSize: FontSize.sm, lineHeight: 18 },
   label: { color: Colors.textSecondary, fontSize: FontSize.xs, marginTop: 8, textTransform: 'uppercase' },

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { ThreatLevel } from '../constants/mockData';
+import { ThreatLevel } from '../constants/callTypes';
 import { ThreatService } from '../services/threatService';
 import { ThreatWindow } from '../services/sentinelEngine';
 

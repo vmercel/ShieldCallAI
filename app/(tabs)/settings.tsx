@@ -161,6 +161,9 @@ export default function SettingsScreen() {
   }, []);
 
   useEffect(() => {
+    // Dev-only probe: the local Python sidecar is an engineering tool, not
+    // part of the shipped product, so production builds never poll for it.
+    if (!__DEV__) return;
     let cancelled = false;
     sidecarHealth()
       .then(h => {
@@ -409,27 +412,34 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        <Text style={styles.sectionTitle}>Research</Text>
-        <Text style={styles.engineerNote}>Engineer only — not the product path</Text>
-        <View style={styles.section}>
-          <TouchableOpacity onPress={() => { trackEvent('detector_lab_opened').catch(() => {}); router.push('/lab-call'); }} activeOpacity={0.85}>
-            <SettingRow
-              icon="hub"
-              label="shieldcall-core"
-              sub={coreStatus}
-              iconColor={Colors.primary}
-            />
-            <View style={styles.divider} />
-            <SettingRow
-              icon="science"
-              label="Detector Lab"
-              sub="Talk to every core API: health, calls, chunk, scripts, scores."
-              iconColor={Colors.warning}
-            >
-              <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
-            </SettingRow>
-          </TouchableOpacity>
-        </View>
+        {/* Dev tools: only present in development builds. The Detector Lab is an
+            engineering screen for the local shieldcall-core sidecar, not the
+            product path, so it is never offered in production. */}
+        {__DEV__ ? (
+          <>
+            <Text style={styles.sectionTitle}>Dev tools</Text>
+            <Text style={styles.engineerNote}>Development builds only — not the product path</Text>
+            <View style={styles.section}>
+              <SettingRow
+                icon="hub"
+                label="shieldcall-core"
+                sub={coreStatus}
+                iconColor={Colors.primary}
+              />
+              <View style={styles.divider} />
+              <TouchableOpacity onPress={() => { trackEvent('detector_lab_opened').catch(() => {}); router.push('/lab-call'); }} activeOpacity={0.85}>
+                <SettingRow
+                  icon="science"
+                  label="Detector Lab"
+                  sub="Talk to every core API: health, calls, chunk, scripts, scores."
+                  iconColor={Colors.warning}
+                >
+                  <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
+                </SettingRow>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : null}
 
         <Text style={styles.version}>ShieldCall AI v1.0.0</Text>
       </ScrollView>

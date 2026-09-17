@@ -20,7 +20,7 @@
  * 8. Composite score emission with structured threat object
  */
 
-import { ThreatLevel } from '../constants/mockData';
+import { ThreatLevel } from '../constants/callTypes';
 import {
   SCAM_PATTERNS,
   ScamPattern,

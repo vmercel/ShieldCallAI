@@ -18,7 +18,7 @@ import { Colors, Spacing, Radius, FontSize, FontWeight, Shadow } from '../consta
 import { SentinelEngine } from '../services/sentinelEngine';
 import { AcousticSentinel, AcousticSnapshot } from '../services/acousticSentinel';
 import { setMuted as setCallMuted } from '../services/callKitService';
-import { ThreatLevel } from '../constants/mockData';
+import { ThreatLevel } from '../constants/callTypes';
 import { findContactByNumberSync as findContactByNumber, getInitials, Contact } from '../services/contactsService';
 import { useLiveTranscription } from '../hooks/useLiveTranscription';
 import { useSettings } from '../contexts/SettingsContext';

@@ -10,7 +10,7 @@ import Svg, { Circle } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, Radius, FontSize, FontWeight } from '../constants/theme';
 import { SentinelEngine } from '../services/sentinelEngine';
-import { ThreatLevel } from '../constants/mockData';
+import { ThreatLevel } from '../constants/callTypes';
 
 export type VoiceKind = 'unknown' | 'human' | 'ai_synthetic';
 export type ContentKind = 'insufficient' | 'genuine' | 'suspicious' | 'scam';

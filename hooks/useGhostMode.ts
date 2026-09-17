@@ -16,7 +16,7 @@ import { GhostMessage, GhostIntelligence } from '../services/ghostAIResponder';
 import { SentinelEngine } from '../services/sentinelEngine';
 import { AcousticSentinel } from '../services/acousticSentinel';
 import { ghostAIService } from '../services/ghostAIService';
-import { ThreatLevel } from '../constants/mockData';
+import { ThreatLevel } from '../constants/callTypes';
 
 export interface GhostModeState {
   messages: GhostMessage[];
