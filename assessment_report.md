@@ -2,7 +2,7 @@
 
 **Date:** May 2026 (Updated after pull 784d13a)
 **Scope:** Full codebase review for production-readiness, functionality completeness, and UX quality
-**Stack:** React Native / Expo (SDK 53) · Supabase Backend · Anthropic Claude (claude-3-5-haiku-20241022) · TypeScript
+**Stack:** React Native / Expo (SDK 53) · Supabase Backend · Anthropic Claude (claude-haiku-4-5-20251001) · TypeScript
 
 ---
 
@@ -66,7 +66,7 @@ CALLSHIELD has advanced significantly in this pull. The most critical gaps from 
 - Cumulative full-text re-analysis for accurate context
 
 ### 1.5 Claude AI SENTINEL Edge Function (`supabase/functions/sentinel-analysis/index.ts`) — NEW
-- **New edge function powered by Claude claude-3-5-haiku-20241022**
+- **New edge function powered by Claude claude-haiku-4-5-20251001**
 - Receives 10-second transcript chunk + full call context (conversation history, acoustic data, community spam count)
 - Returns structured JSON: riskScore, riskLevel, callerType, callerTypeConfidence, contentVerdict, contentVerdictConfidence, spamAssociated, flags, factChecks, scamType, trajectoryLabel, confidenceLabel, reasoning
 - Implements peak ratchet rule server-side (score cannot drop more than 15% from peak)

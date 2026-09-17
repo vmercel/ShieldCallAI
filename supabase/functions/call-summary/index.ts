@@ -26,7 +26,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
-    const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-3-5-haiku-20241022';
+    const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-haiku-4-5-20251001';
 
     if (!apiKey) {
       throw new Error('AI provider credentials not configured');
