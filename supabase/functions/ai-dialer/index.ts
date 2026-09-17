@@ -115,7 +115,7 @@ Deno.serve(async (req: Request) => {
         messages: [
           {
             role: 'user',
-            content: `Complete this task via phone call:\n\n"${instruction}"\n\nUser context: ${userContext || 'Standard user, no special context.'}\n\nReturn your answer as a JSON object with keys: phases, outcome, summary, actionItems, callDetails, totalDuration.`,
+            content: `Complete this task via phone call:\n\n"${instruction}"\n\nUser context: ${userContext || 'Standard user, no special context.'}\n\nReturn ONLY a JSON object with keys: phases, outcome, summary, actionItems, callDetails, totalDuration. No markdown fences, no commentary, no text outside the JSON.`,
           },
         ],
       }),
@@ -126,8 +126,12 @@ Deno.serve(async (req: Request) => {
       throw new Error(`AI provider: ${aiResponse.status} ${errText}`);
     }
 
-    const aiData = await aiResponse.json();
-    const content = aiData.content?.find((b: { type: string; text?: string }) => b.type === 'text')?.text ?? '{}';
+    const rawText = aiData.content?.find((b: { type: string; text?: string }) => b.type === 'text')?.text ?? '{}';
+    // Claude may wrap JSON in markdown fences or add commentary; extract the object
+    const fenceStripped = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+    const start = fenceStripped.indexOf('{');
+    const end = fenceStripped.lastIndexOf('}');
+    const content = start >= 0 && end > start ? fenceStripped.slice(start, end + 1) : fenceStripped;
 
     let parsed: any;
     try {

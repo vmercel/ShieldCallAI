@@ -53,7 +53,7 @@ Deno.serve(async (req: Request) => {
         messages: [
           {
             role: 'user',
-            content: `Analyze this call:\n\nCaller: ${callerName} (${callerNumber})\nDuration: ${duration}s\nThreat Score: ${threatScore}%\nThreat Level: ${threatLevel}\nDetected Flags: ${(flags || []).join(', ') || 'none'}\n\nTranscript:\n${transcriptText || 'No transcript available'}\n\nReturn your answer as a JSON object.`,
+            content: `Analyze this call:\n\nCaller: ${callerName} (${callerNumber})\nDuration: ${duration}s\nThreat Score: ${threatScore}%\nThreat Level: ${threatLevel}\nDetected Flags: ${(flags || []).join(', ') || 'none'}\n\nTranscript:\n${transcriptText || 'No transcript available'}\n\nReturn ONLY the JSON object. No markdown fences, no commentary, no text outside the JSON.`,
           },
         ],
       }),
@@ -64,8 +64,12 @@ Deno.serve(async (req: Request) => {
       throw new Error(`AI provider error: ${errText}`);
     }
 
-    const data = await response.json();
-    const content = data.content?.find((b: { type: string; text?: string }) => b.type === 'text')?.text ?? '{}';
+    const rawText = data.content?.find((b: { type: string; text?: string }) => b.type === 'text')?.text ?? '{}';
+    // Claude may wrap JSON in markdown fences or add commentary; extract the object
+    const fenceStripped = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+    const start = fenceStripped.indexOf('{');
+    const end = fenceStripped.lastIndexOf('}');
+    const content = start >= 0 && end > start ? fenceStripped.slice(start, end + 1) : fenceStripped;
 
     let result;
     try {
