@@ -13,6 +13,13 @@ import { isAnalyticsEnabled, setAnalyticsEnabled, trackEvent } from '../../servi
 import { sidecarHealth } from '../../services/shieldcallSidecar';
 import { PhoneSetupSheet, callingIsReady } from '../../components/PhoneSetupSheet';
 import { BrandMark } from '../../components/BrandMark';
+import { getActivePlanId, PlanId } from '../../services/iap';
+
+const PLAN_LABELS: Record<PlanId, string> = {
+  free: 'FREE',
+  pro_monthly: 'PRO',
+  family_monthly: 'FAMILY',
+};
 
 function SettingRow({ icon, label, sub, iconColor, children }: {
   icon: string; label: string; sub?: string; iconColor?: string; children?: React.ReactNode;
@@ -149,9 +156,16 @@ export default function SettingsScreen() {
   const [coreStatus, setCoreStatus] = useState('Checking shieldcall-core…');
   const [setupOpen, setSetupOpen] = useState(false);
   const [analyticsEnabled, setAnalyticsEnabledState] = useState(true);
+  const [activePlan, setActivePlan] = useState<PlanId>('free');
 
   useEffect(() => {
     isAnalyticsEnabled().then(setAnalyticsEnabledState).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      getActivePlanId().then(setActivePlan).catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -265,7 +279,7 @@ export default function SettingsScreen() {
               <Text style={styles.profileEmail}>Not signed in. Sign in to save call history.</Text>
             )}
             <View style={styles.tierBadge}>
-              <Text style={styles.tierText}>FREE</Text>
+              <Text style={styles.tierText}>{PLAN_LABELS[activePlan]}</Text>
             </View>
           </View>
           {isAuthenticated ? (
@@ -336,6 +350,20 @@ export default function SettingsScreen() {
               <Text style={[styles.permBadgeText, { color: micColor }]}>{micLabel}</Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        <Text style={styles.sectionTitle}>Plans</Text>
+        <View style={styles.section}>
+          <TouchableOpacity onPress={() => router.push('/paywall' as any)} activeOpacity={0.8}>
+            <SettingRow
+              icon="workspace-premium"
+              label="ShieldCall plans"
+              sub={activePlan === 'free' ? 'Upgrade to Pro or Family for full protection' : `Current plan: ${PLAN_LABELS[activePlan]}`}
+              iconColor={Colors.primary}
+            >
+              <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
+            </SettingRow>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.sectionTitle}>Legal</Text>

@@ -21,7 +21,8 @@
     "check:consent": "node scripts/check-consent.js",
     "check:auth": "node scripts/check-auth.js",
     "check:prod-gating": "node scripts/check-prod-gating.js",
-    "check:service-health": "node scripts/check-service-health.js"
+    "check:service-health": "node scripts/check-service-health.js",
+    "check:iap": "node scripts/check-iap.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.1",
@@ -110,6 +111,7 @@
     "react-native-chart-kit": "6.12.0",
     "react-native-edge-to-edge": "1.6.0",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-iap": "^16.6.1",
     "react-native-keyboard-controller": "1.18.5",
     "react-native-markdown-display": "^7.0.2",
     "react-native-pager-view": "6.9.1",
