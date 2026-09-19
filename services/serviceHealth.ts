@@ -138,8 +138,9 @@ async function probeSupabase(): Promise<ServiceProbe> {
   try {
     // Lightweight authenticated read: the profiles table is readable by the
     // signed-in user and returns at most one row. Proves auth + database.
+    // PostgrestBuilder is thenable but not typed as a native Promise, so wrap it.
     const { error } = await withTimeout(
-      supabase.from('profiles').select('id').limit(1).maybeSingle(),
+      Promise.resolve(supabase.from('profiles').select('id').limit(1).maybeSingle()),
       PROBE_TIMEOUT_MS
     );
     if (error) throw error;

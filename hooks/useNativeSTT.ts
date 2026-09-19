@@ -20,7 +20,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Platform } from 'react-native';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../services/supabaseClient';
 import { enableMicSession, startExclusiveRecording, stopExclusiveRecording } from '../services/micRecorder';
 

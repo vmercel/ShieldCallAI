@@ -340,7 +340,7 @@ export default function SettingsScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.settingLabel}>Microphone</Text>
-              <Text style={styles.settingSub}>Required so ShieldCall AI can analyze this phone's live conversation</Text>
+              <Text style={styles.settingSub}>Required so ShieldCall AI can analyze this phone&rsquo;s live conversation</Text>
             </View>
             <TouchableOpacity
               onPress={() => setSetupOpen(true)}

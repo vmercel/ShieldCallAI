@@ -82,7 +82,7 @@ function AnimatedNumber({ value, color, fontSize = 28 }: { value: number; color:
 }
 
 // ─── Live Threat Ticker ────────────────────────────────────────────────────────
-function LiveThreatTicker({ threats }: { threats: { scam_type?: string; report_count: number; region: string; phone_number: string }[] }) {
+function LiveThreatTicker({ threats }: { threats: { scam_type: string | null; report_count: number; region: string; phone_number: string }[] }) {
   const [index, setIndex] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -521,7 +521,7 @@ export default function HomeScreen() {
           <MaterialIcons name="phone-missed" size={28} color={Colors.textMuted} />
           <Text style={styles.noCallsText}>No calls analyzed yet</Text>
           <Text style={styles.noCallsSub}>
-            Tap "Live Call Analysis" to start SENTINEL™ monitoring on your next call
+            Tap &ldquo;Live Call Analysis&rdquo; to start SENTINEL™ monitoring on your next call
           </Text>
         </View>
       ) : (

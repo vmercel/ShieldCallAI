@@ -6,7 +6,7 @@ import { supabase } from './supabaseClient';
 export interface CommunityThreat {
   id: string;
   phone_number: string;
-  scam_type?: string;
+  scam_type: string | null;
   report_count: number;
   last_seen_at: string;
   region: string;

@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import type { Database } from './database.types';
 
 const extra = (Constants.expoConfig?.extra ?? {}) as {
   supabaseUrl?: string;
@@ -53,7 +54,7 @@ const createStorageAdapter = () => {
 // Lazy singleton — defers client creation until first access so the module
 // can be imported during SSR/render without throwing when env vars are not
 // yet injected (they are always present at runtime on the device).
-let _client: ReturnType<typeof createClient> | null = null;
+let _client: ReturnType<typeof createClient<Database>> | null = null;
 
 function getSupabaseClient() {
   if (!_client) {
@@ -63,7 +64,7 @@ function getSupabaseClient() {
       // minimal stub so the import does not throw.
       console.warn('[supabase] EXPO_PUBLIC_SUPABASE_ANON_KEY is not set — using stub client');
     }
-    _client = createClient(SUPABASE_URL, key || 'placeholder-key-not-set', {
+    _client = createClient<Database>(SUPABASE_URL, key || 'placeholder-key-not-set', {
       auth: {
         storage: createStorageAdapter(),
         autoRefreshToken: true,
@@ -76,7 +77,7 @@ function getSupabaseClient() {
 }
 
 // Named export for direct usage (Proxy delegates all calls to the lazy client)
-export const supabase = new Proxy({} as ReturnType<typeof createClient>, {
+export const supabase = new Proxy({} as ReturnType<typeof createClient<Database>>, {
   get(_target, prop) {
     return (getSupabaseClient() as any)[prop];
   },

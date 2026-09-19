@@ -7,7 +7,7 @@ export interface BlockedNumber {
   id: string;
   user_id: string;
   phone_number: string;
-  blocked_reason?: string;
+  blocked_reason: string | null;
   blocked_at: string;
 }
 

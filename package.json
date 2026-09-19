@@ -39,7 +39,7 @@
     "@react-native-picker/picker": "2.11.1",
     "@react-native-segmented-control/segmented-control": "2.5.7",
     "@react-navigation/bottom-tabs": "^7.3.10",
-    "@react-navigation/core": "7.8.5",
+    "@react-navigation/core": "^7.22.1",
     "@react-navigation/drawer": "^7.3.9",
     "@react-navigation/elements": "2.3.8",
     "@react-navigation/native": "^7.1.6",
@@ -114,6 +114,7 @@
     "react-native-iap": "^16.6.1",
     "react-native-keyboard-controller": "1.18.5",
     "react-native-markdown-display": "^7.0.2",
+    "react-native-nitro-modules": "^0.36.5",
     "react-native-pager-view": "6.9.1",
     "react-native-paper": "^5.12.5",
     "react-native-reanimated": "~4.1.1",
@@ -138,5 +139,14 @@
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "react-native-callkeep"
+        ]
+      }
+    }
+  }
 }

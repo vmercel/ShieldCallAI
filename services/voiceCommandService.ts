@@ -19,7 +19,7 @@
 
 import { Platform } from 'react-native';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from './supabaseClient';
 import { startExclusiveRecording, stopExclusiveRecording } from './micRecorder';
 
