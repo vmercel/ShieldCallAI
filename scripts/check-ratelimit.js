@@ -143,6 +143,43 @@ async function main() {
   const gate = await rl.authorizeAndCheckQuota(reqWith(undefined), { functionName: 'ghost-ai', limit: 10 });
   assert(gate.ok === false && gate.response.status === 401, 'gate: no token -> 401 without DB');
 
+  // --- wiring regression guard (P0-3b x2) ---
+  // The quota _module_ survived both regressions; what kept getting dropped
+  // was the wiring in the two AI functions. These assertions read the actual
+  // function sources so a future rewrite that silently drops the gate fails
+  // this check instead of shipping unprotected AI endpoints.
+  const wiringTargets = [
+    { file: 'ghost-ai/index.ts', functionName: 'ghost-ai' },
+    { file: 'transcribe-audio/index.ts', functionName: 'transcribe-audio' },
+  ];
+  for (const t of wiringTargets) {
+    const srcPath = path.join(ROOT, 'supabase', 'functions', t.file);
+    const src = fs.readFileSync(srcPath, 'utf8');
+    assert(
+      src.includes("from '../_shared/rateLimit.ts'"),
+      `wiring ${t.file}: imports ../_shared/rateLimit.ts`,
+    );
+    assert(
+      src.includes(`functionName: '${t.functionName}'`),
+      `wiring ${t.file}: gate called with functionName '${t.functionName}'`,
+    );
+    assert(
+      src.includes('authorizeAndCheckQuota('),
+      `wiring ${t.file}: calls authorizeAndCheckQuota`,
+    );
+    assert(
+      src.includes('withQuotaHeaders('),
+      `wiring ${t.file}: wraps responses with withQuotaHeaders`,
+    );
+    const pingIdx = src.indexOf('ping === true');
+    const gateIdx = src.indexOf('authorizeAndCheckQuota(');
+    assert(pingIdx !== -1, `wiring ${t.file}: has cheap ping probe`);
+    assert(
+      pingIdx < gateIdx,
+      `wiring ${t.file}: ping probe returns before the quota gate (free probe stays free)`,
+    );
+  }
+
   console.log(`[check-ratelimit] PASS (${passed} assertions)`);
 }
 

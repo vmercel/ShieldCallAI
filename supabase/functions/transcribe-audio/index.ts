@@ -18,6 +18,11 @@
  */
 
 import { corsHeaders } from '../_shared/cors.ts';
+import {
+  authorizeAndCheckQuota,
+  parseLimit,
+  withQuotaHeaders,
+} from '../_shared/rateLimit.ts';
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -45,13 +50,22 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // P0-3: per-user quota on the paid transcription endpoint (after the
+    // key check, so misconfiguration never consumes a user's quota; the
+    // cheap ping probe above stays outside the gate).
+    const gate = await authorizeAndCheckQuota(req, {
+      functionName: 'transcribe-audio',
+      limit: parseLimit(Deno.env.get('RATE_LIMIT_TRANSCRIBE_AUDIO_PER_HOUR'), 120),
+    });
+    if (!gate.ok) return gate.response;
+
     const { audioBase64, mimeType = 'audio/m4a', language = 'en' } = body;
 
     if (!audioBase64) {
-      return new Response(
+      return withQuotaHeaders(new Response(
         JSON.stringify({ transcript: '', confidence: 0, words: 0 }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      ), gate.quota);
     }
 
     // Decode base64 to binary
@@ -77,10 +91,10 @@ Deno.serve(async (req: Request) => {
     if (!dgResponse.ok) {
       const errText = await dgResponse.text();
       console.error('Deepgram error:', dgResponse.status, errText);
-      return new Response(
+      return withQuotaHeaders(new Response(
         JSON.stringify({ transcript: '', confidence: 0, words: 0, error: `Deepgram ${dgResponse.status}` }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      ), gate.quota);
     }
 
     const dgData = await dgResponse.json();
@@ -90,10 +104,10 @@ Deno.serve(async (req: Request) => {
     const confidence: number = alternative?.confidence ?? 0;
     const words: number = alternative?.words?.length ?? transcript.split(/\s+/).filter(Boolean).length;
 
-    return new Response(
+    return withQuotaHeaders(new Response(
       JSON.stringify({ transcript, confidence, words }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    ), gate.quota);
 
   } catch (error) {
     console.error('Transcription error:', error);
