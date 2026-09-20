@@ -126,4 +126,9 @@ for (const banned of [/sk_live_/i, /pk_live_/i, /API_KEY\s*=\s*['"][A-Za-z0-9]/,
 }
 ok('no hardcoded secrets in services/iap.ts');
 
+// 11. Settings exposes a standalone Restore purchases row (P1-3, App Store requirement).
+if (!settings.includes('restorePurchases')) fail('Settings does not wire a standalone restorePurchases call');
+if (!/Restore purchases/i.test(settings)) fail('Settings has no visible "Restore purchases" label');
+ok('Settings has a standalone Restore purchases row wired to restorePurchases');
+
 console.log(`[check:iap] all ${passed} assertions passed`);

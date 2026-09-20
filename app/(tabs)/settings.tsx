@@ -13,7 +13,7 @@ import { isAnalyticsEnabled, setAnalyticsEnabled, trackEvent } from '../../servi
 import { sidecarHealth } from '../../services/shieldcallSidecar';
 import { PhoneSetupSheet, callingIsReady } from '../../components/PhoneSetupSheet';
 import { BrandMark } from '../../components/BrandMark';
-import { getActivePlanId, PlanId } from '../../services/iap';
+import { getActivePlanId, restorePurchases, IapStoreError, IapUnavailableError, PlanId } from '../../services/iap';
 
 const PLAN_LABELS: Record<PlanId, string> = {
   free: 'FREE',
@@ -157,6 +157,31 @@ export default function SettingsScreen() {
   const [setupOpen, setSetupOpen] = useState(false);
   const [analyticsEnabled, setAnalyticsEnabledState] = useState(true);
   const [activePlan, setActivePlan] = useState<PlanId>('free');
+  const [restoring, setRestoring] = useState(false);
+
+  const handleRestorePurchases = async () => {
+    if (restoring) return;
+    setRestoring(true);
+    try {
+      const plans = await restorePurchases();
+      setActivePlan(await getActivePlanId().catch(() => 'free' as PlanId));
+      Alert.alert(
+        'Restore complete',
+        plans.length > 0
+          ? 'Your purchases were restored.'
+          : 'No previous purchases were found for this store account.'
+      );
+    } catch (err) {
+      Alert.alert(
+        'Restore failed',
+        err instanceof IapStoreError || err instanceof IapUnavailableError
+          ? err.message
+          : 'An unexpected error occurred. Please try again.'
+      );
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   useEffect(() => {
     isAnalyticsEnabled().then(setAnalyticsEnabledState).catch(() => {});
@@ -362,6 +387,19 @@ export default function SettingsScreen() {
               iconColor={Colors.primary}
             >
               <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />
+            </SettingRow>
+          </TouchableOpacity>
+          <View style={styles.divider} />
+          <TouchableOpacity onPress={handleRestorePurchases} activeOpacity={0.8} disabled={restoring}>
+            <SettingRow
+              icon="restore"
+              label={restoring ? 'Restoring purchases…' : 'Restore purchases'}
+              sub="Recover subscriptions purchased on this store account"
+              iconColor={Colors.primary}
+            >
+              {restoring
+                ? <ActivityIndicator size="small" color={Colors.primary} />
+                : <MaterialIcons name="chevron-right" size={22} color={Colors.textMuted} />}
             </SettingRow>
           </TouchableOpacity>
         </View>
