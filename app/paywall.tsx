@@ -8,8 +8,10 @@
  * honestly instead of offering a button that cannot work.
  *
  * Purchases are auto-renewing subscriptions billed through Apple / Google.
- * Server-side receipt validation is P1-2 (pending); entitlements granted
- * here are device-local until the validate-receipt endpoint lands.
+ * Server-side receipt validation runs through the validate-receipt edge
+ * function (P1-2); until the store API credentials are configured there,
+ * purchases validate on-device only and retry in the background.
+ * Entitlements here are device-local until the server confirms them.
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import {

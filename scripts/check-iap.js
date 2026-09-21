@@ -19,8 +19,10 @@
  *     purchases to restorePurchases.
  *  7. The paywall links to the Terms of use and Privacy policy routes
  *     (App Store review requirement).
- *  8. The paywall documents the P1-2 receipt-validation seam rather than
- *     claiming server-side validation exists.
+ *  8. Server-side receipt validation (P1-2) is implemented: the client sends
+ *     each purchase to the validate-receipt edge function and retries
+ *     pending purchases; the paywall stays honest that entitlements are
+ *     device-local until the server confirms them.
  *  9. Settings links to the paywall (/paywall route reachable from Settings).
  * 10. No secrets (API keys, shared secrets) are hardcoded in services/iap.ts.
  *
@@ -112,9 +114,13 @@ if (!/router\.push\(['"]\/terms['"]/.test(paywall) || !/router\.push\(['"]\/priv
 }
 ok('paywall links to Terms of use and Privacy policy');
 
-// 8. P1-2 receipt-validation seam documented.
-if (!iap.includes('P1-2')) fail('services/iap.ts does not document the P1-2 receipt-validation seam');
-ok('P1-2 receipt-validation seam is documented');
+// 8. P1-2 receipt validation is implemented, not just documented: the client
+// sends each purchase to the validate-receipt edge function and retries
+// pending purchases.
+for (const needle of ['validate-receipt', 'validateReceiptWithServer', 'retryPendingValidations']) {
+  if (!iap.includes(needle)) fail(`services/iap.ts does not implement P1-2 receipt validation (${needle} missing)`);
+}
+ok('P1-2 receipt validation is implemented (validate-receipt call + retries)');
 
 // 9. Settings links to the paywall.
 if (!settings.includes('/paywall')) fail('Settings does not link to /paywall');
