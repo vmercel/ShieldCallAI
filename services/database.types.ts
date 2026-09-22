@@ -48,6 +48,17 @@ export interface AnalyticsEventRow {
   created_at: string;
 }
 
+/** PushKit (iOS) / FCM (Android) device tokens for background call delivery (P1-4). */
+export interface VoipTokenRow {
+  id: string;
+  user_id: string;
+  token: string;
+  platform: 'ios' | 'android';
+  app_id: string | null;
+  last_seen_at: string;
+  created_at: string;
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -85,6 +96,12 @@ export type Database = {
         Row: RowOf<AnalyticsEventRow>;
         Insert: Omit<AnalyticsEventRow, 'id'>;
         Update: Partial<AnalyticsEventRow>;
+        Relationships: [];
+      };
+      voip_tokens: {
+        Row: RowOf<VoipTokenRow>;
+        Insert: Omit<VoipTokenRow, 'id' | 'created_at'>;
+        Update: Partial<VoipTokenRow>;
         Relationships: [];
       };
     };

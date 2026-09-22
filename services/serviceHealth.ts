@@ -92,6 +92,23 @@ const FUNCTION_PROBES: FunctionProbeDef[] = [
         ? { status: 'ok', detail: 'Dialer ready' }
         : { status: 'degraded', detail: 'AI key not configured on server' },
   },
+  {
+    id: 'voip-push',
+    label: 'VoIP push',
+    description: 'Wakes the app for incoming calls in the background (PushKit/FCM).',
+    interpret: (data) =>
+      data?.apnsConfigured || data?.fcmConfigured
+        ? {
+            status: 'ok',
+            detail: `Push ready (${[
+              data?.apnsConfigured ? 'APNs' : null,
+              data?.fcmConfigured ? 'FCM' : null,
+            ]
+              .filter(Boolean)
+              .join(' + ')})`,
+          }
+        : { status: 'degraded', detail: 'Push keys not configured on server' },
+  },
 ];
 
 async function probeFunction(def: FunctionProbeDef): Promise<ServiceProbe> {

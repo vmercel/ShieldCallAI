@@ -6,7 +6,7 @@
  * services/serviceHealth.ts. Each edge function must answer { ping: true }
  * cheaply (no AI/transcription spend) and report whether its own provider
  * key is configured. Verifies that:
- *  1. services/serviceHealth.ts exists and probes supabase + the 4 functions.
+ *  1. services/serviceHealth.ts exists and probes supabase + the 5 functions.
  *  2. Each of ghost-ai, call-summary, ai-dialer, transcribe-audio has a
  *     `ping === true` branch that returns before any provider call.
  *  3. The ping branch reports key configuration as a boolean (never the key).
@@ -42,14 +42,15 @@ const EXPECTED = {
   'supabase/functions/call-summary/index.ts': 'aiConfigured',
   'supabase/functions/ai-dialer/index.ts': 'aiConfigured',
   'supabase/functions/transcribe-audio/index.ts': 'deepgramConfigured',
+  'supabase/functions/voip-push/index.ts': 'apnsConfigured',
 };
 
 // 1. Probe module exists and covers every service.
 const svc = read('services/serviceHealth.ts');
-for (const id of ['supabase', 'ghost-ai', 'transcribe-audio', 'call-summary', 'ai-dialer']) {
+for (const id of ['supabase', 'ghost-ai', 'transcribe-audio', 'call-summary', 'ai-dialer', 'voip-push']) {
   if (!svc.includes(`'${id}'`)) fail(`serviceHealth.ts does not probe '${id}'`);
 }
-ok('serviceHealth.ts probes supabase + all 4 edge functions');
+ok('serviceHealth.ts probes supabase + all 5 edge functions');
 if (!svc.includes('ping: true')) fail('serviceHealth.ts does not send { ping: true }');
 ok('serviceHealth.ts sends the cheap { ping: true } payload');
 
@@ -58,8 +59,11 @@ for (const [file, flag] of Object.entries(EXPECTED)) {
   const src = read(file);
   if (!src.includes('ping === true')) fail(`${file} has no ping branch`);
   if (!src.includes(flag)) fail(`${file} ping branch does not report ${flag}`);
-  // The flag must be a boolean coercion, never the raw key.
-  if (!src.includes(`${flag}: !!`)) fail(`${file} must report ${flag} as a boolean (!!)`);
+  // The flag must be a boolean coercion (or a boolean-returning helper call),
+  // never the raw key.
+  if (!src.includes(`${flag}: !!`) && !src.includes(`${flag}: ${flag}()`)) {
+    fail(`${file} must report ${flag} as a boolean (!! or ${flag}())`);
+  }
   ok(`${file} answers ping and reports ${flag} as boolean`);
 }
 
@@ -81,6 +85,6 @@ for (const file of Object.keys(EXPECTED)) {
     }
   }
 }
-ok('ping branches return before any provider call in all 4 functions');
+ok('ping branches return before any provider call in all 5 functions');
 
 console.log(`[${TAG}] ${passed} assertions passed`);

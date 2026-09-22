@@ -12,6 +12,12 @@ import { Colors } from '../constants/theme';
 import { router } from 'expo-router';
 import { registerCallKitEvents, setupCallKit } from '../services/callKitService';
 import { registerPushToken } from '../services/permissionsService';
+import {
+  onIncomingVoipCall,
+  registerVoipPushToken,
+  startVoipPushListener,
+  unregisterVoipPushToken,
+} from '../services/voipPush';
 import { getAllContacts } from '../services/contactsService';
 import { supabase } from '../services/supabaseClient';
 import * as Linking from 'expo-linking';
@@ -62,6 +68,31 @@ function AppInitializer() {
     setupCallKit();
     getAllContacts().catch(() => {});
     registerPushToken().catch(() => {});
+    // P1-4: PushKit VoIP registration + background incoming-call delivery.
+    // The listener is always on (pushes can relaunch a terminated app);
+    // token registration needs a signed-in user, so it follows auth state.
+    startVoipPushListener();
+    const unsubVoipCall = onIncomingVoipCall((call) => {
+      router.push({
+        pathname: '/incoming-call',
+        params: {
+          callUUID: call.callUUID,
+          callerNumber: call.callerNumber,
+          callerName: call.callerName,
+        },
+      });
+    });
+    const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN') {
+        registerVoipPushToken().catch(() => {});
+      } else if (event === 'SIGNED_OUT') {
+        unregisterVoipPushToken().catch(() => {});
+      }
+    });
+    // Also attempt registration for an already-restored session.
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) registerVoipPushToken().catch(() => {});
+    });
     const unregister = registerCallKitEvents({
       onIncomingCall: (callUUID, callerNumber, callerName) => {
         router.push({
@@ -89,6 +120,8 @@ function AppInitializer() {
     });
     return () => {
       unregister();
+      unsubVoipCall();
+      authSub.subscription.unsubscribe();
       linkSub.remove();
     };
   }, []);
