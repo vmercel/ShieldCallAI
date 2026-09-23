@@ -24,7 +24,9 @@
     "check:service-health": "node scripts/check-service-health.js",
     "check:iap": "node scripts/check-iap.js",
     "check:receipt-validation": "node scripts/check-receipt-validation.js",
-    "check:voip-push": "node scripts/check-voip-push.js"
+    "check:voip-push": "node scripts/check-voip-push.js",
+    "load:test": "node scripts/load-test-edge-functions.js --out docs/load-test.md",
+    "check:load-test": "node scripts/check-load-test.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.1",
