@@ -26,7 +26,8 @@
     "check:receipt-validation": "node scripts/check-receipt-validation.js",
     "check:voip-push": "node scripts/check-voip-push.js",
     "load:test": "node scripts/load-test-edge-functions.js --out docs/load-test.md",
-    "check:load-test": "node scripts/check-load-test.js"
+    "check:load-test": "node scripts/check-load-test.js",
+    "check:device-checklist": "node scripts/check-device-checklist.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.1",
