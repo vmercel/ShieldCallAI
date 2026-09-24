@@ -119,8 +119,8 @@ expect(/revoke all[^;]*from public,\s*anon/i, mig, 'my_current_plan must be revo
 expect(/grant execute[^;]*to authenticated/i, mig, 'my_current_plan must be granted to authenticated');
 ok('my_current_plan() RPC: SECURITY DEFINER, expired reads as free, authenticated-only');
 
-// ---- Client ----
-const iap = read('services/iap.ts');
+// ---- Client (native implementation; services/iap.ts is the web stub) ----
+const iap = read('services/iap.native.ts');
 
 // 8a. Sends each purchase to the endpoint.
 expect(/supabase\.functions\.invoke\(['"]validate-receipt['"]/, iap, 'client must invoke validate-receipt');

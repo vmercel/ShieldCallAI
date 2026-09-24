@@ -20,7 +20,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Platform } from 'react-native';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { supabase } from '../services/supabaseClient';
 import { enableMicSession, startExclusiveRecording, stopExclusiveRecording } from '../services/micRecorder';
 
@@ -147,13 +147,15 @@ export function useNativeSTT(onSegment?: OnSegmentCallback) {
     if (!uri || !isActiveRef.current) return;
     setState(prev => ({ ...prev, isTranscribing: true }));
     try {
-      // Read file as base64
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      // Read file as base64 via the expo-file-system v19 File API.
+      // (The legacy top-level readAsStringAsync throws at runtime in v19,
+      // and FileSystem.EncodingType no longer exists.)
+      const base64 = await new File(uri).base64();
 
       // Delete the temp file
-      FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+      try {
+        new File(uri).delete();
+      } catch {}
 
       if (!base64 || !isActiveRef.current) return;
 

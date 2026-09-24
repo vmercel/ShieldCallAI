@@ -120,7 +120,6 @@ function SentinelIntelligencePanel({ stats, calls }: {
     totalCalls: number;
     scamsBlocked: number;
     ghostModeCalls: number;
-    estimatedSavings: number;
     topScamTypes: { type: string; count: number }[];
     safeCallsPercent: number;
   };
@@ -237,7 +236,7 @@ function SentinelIntelligencePanel({ stats, calls }: {
 
 // ─── Protection Status Card ───────────────────────────────────────────────────
 function ProtectionStatusCard({ stats, loading }: {
-  stats: { scamsBlocked: number; estimatedSavings: number; totalCalls: number };
+  stats: { scamsBlocked: number; totalCalls: number };
   loading: boolean;
 }) {
   return (
@@ -265,14 +264,6 @@ function ProtectionStatusCard({ stats, loading }: {
                 ? `${stats.scamsBlocked} threat${stats.scamsBlocked !== 1 ? 's' : ''} intercepted · ${stats.totalCalls} calls analyzed`
                 : 'SENTINEL™ is monitoring all calls'}
             </Text>
-            {stats.estimatedSavings > 0 && (
-              <View style={styles.shieldSavingsRow}>
-                <MaterialIcons name="savings" size={13} color={Colors.safe} />
-                <Text style={styles.shieldSavings}>
-                  ${stats.estimatedSavings.toLocaleString()} estimated losses prevented
-                </Text>
-              </View>
-            )}
           </>
         )}
       </View>
@@ -473,22 +464,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Savings Card — only show when there's real data */}
-      {!loading && stats.estimatedSavings > 0 && (
-        <View style={styles.savingsCard}>
-          <View style={styles.savingsIconWrap}>
-            <MaterialIcons name="account-balance-wallet" size={22} color={Colors.safe} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.savingsTitle}>
-              ${stats.estimatedSavings.toLocaleString()} Prevented
-            </Text>
-            <Text style={styles.savingsSub}>
-              Based on FTC avg. fraud loss: $700/high-risk · $200/suspicious call
-            </Text>
-          </View>
-        </View>
-      )}
+      {/* Threat interception summary — real counts only */}
 
       {/* Community Threat Feed — Real Data */}
       <View style={styles.sectionRow}>
@@ -635,8 +611,6 @@ const styles = StyleSheet.create({
   shieldLiveDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: Colors.safe },
   shieldLiveText: { fontSize: 9, fontWeight: FontWeight.extrabold, color: Colors.safe, letterSpacing: 1 },
   shieldSub: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  shieldSavingsRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  shieldSavings: { fontSize: FontSize.sm, color: Colors.safe, fontWeight: FontWeight.semibold },
 
   // Quick Actions
   quickRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.sm },
@@ -737,19 +711,6 @@ const styles = StyleSheet.create({
   },
   statNum: { fontSize: FontSize.xxl, fontWeight: FontWeight.extrabold, marginTop: 4 },
   statLabel: { fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center', marginTop: 3, lineHeight: 16 },
-
-  // Savings Card
-  savingsCard: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
-    backgroundColor: Colors.safeGlow, borderRadius: Radius.lg, padding: Spacing.md,
-    borderWidth: 1, borderColor: Colors.safe + '44', marginBottom: Spacing.md,
-  },
-  savingsIconWrap: {
-    width: 44, height: 44, borderRadius: Radius.md,
-    backgroundColor: Colors.safe + '22', alignItems: 'center', justifyContent: 'center',
-  },
-  savingsTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.safe },
-  savingsSub: { fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 17, marginTop: 2 },
 
   // Community Threats
   communityLoadWrap: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.md },

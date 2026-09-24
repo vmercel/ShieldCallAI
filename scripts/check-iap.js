@@ -57,10 +57,25 @@ if (!pkg.dependencies || !pkg.dependencies['react-native-iap']) {
 }
 ok('react-native-iap is a declared dependency');
 
-const iap = read('services/iap.ts');
+const iap = read('services/iap.native.ts');
+const iapWebStub = read('services/iap.ts');
 const paywall = read('app/paywall.tsx');
 const envExample = read('.env.example');
 const settings = read('app/(tabs)/settings.tsx');
+
+// 0. The native implementation must be the real IAP code, not a stray file.
+// (Regression guard: a 2026-09-21 re-split once shipped a Firebase template
+// as iap.native.ts, which Metro loads on every real device.)
+for (const banned of ['firebase-module', './notifications', 'FirebaseModule']) {
+  if (iap.includes(banned)) fail(`services/iap.native.ts contains '${banned}': wrong file content (Firebase template, not IAP)`);
+}
+if (!iap.includes('react-native-iap')) fail('services/iap.native.ts does not reference react-native-iap: not the native IAP implementation');
+ok('services/iap.native.ts is the real native IAP implementation (not a stray file)');
+// The web stub must stay a stub: no native store imports that break web bundling.
+if (/^import\s+.*from\s+['"]react-native-iap['"]/.test(iapWebStub) || iapWebStub.includes("require('react-native-iap')")) {
+  fail('services/iap.ts (web stub) references react-native-iap: web bundling would break');
+}
+ok('services/iap.ts stays a clean web stub with no native store imports');
 
 // 2. Catalog: monthly + family, non-empty unique SKUs, env overrides.
 for (const plan of ['pro_monthly', 'family_monthly']) {
@@ -73,20 +88,20 @@ if (skuDefaults.length !== 2 || skuDefaults.some((s) => !s) || new Set(skuDefaul
 }
 ok(`default SKUs are non-empty and unique (${skuDefaults.join(', ')})`);
 for (const env of ['EXPO_PUBLIC_IAP_PRO_MONTHLY_SKU', 'EXPO_PUBLIC_IAP_FAMILY_MONTHLY_SKU']) {
-  if (!iap.includes(env)) fail(`services/iap.ts does not read ${env}`);
+  if (!iap.includes(env)) fail(`services/iap.native.ts does not read ${env}`);
   if (!envExample.includes(env)) fail(`.env.example does not document ${env}`);
 }
-ok('SKU env overrides are read by services/iap.ts and documented in .env.example');
+ok('SKU env overrides are read by services/iap.native.ts and documented in .env.example');
 
 // 3. Lazy native-module load, no top-level import.
 const lines = iap.split('\n');
 const topLevelImport = lines.some((l) => /^import\s+.*from\s+['"]react-native-iap['"]/.test(l.trim()));
-if (topLevelImport) fail('services/iap.ts statically imports react-native-iap at module top level');
+if (topLevelImport) fail('services/iap.native.ts statically imports react-native-iap at module top level');
 const moduleLevelRequire = lines.some((l, i) => {
   const t = l.trim();
   return t.startsWith('require(') && t.includes('react-native-iap') && !lines.slice(Math.max(0, i - 6), i).some((p) => p.includes('function getIap'));
 });
-if (moduleLevelRequire) fail('services/iap.ts requires react-native-iap outside the guarded loader');
+if (moduleLevelRequire) fail('services/iap.native.ts requires react-native-iap outside the guarded loader');
 if (!iap.includes('IapUnavailableError')) fail('IapUnavailableError is not defined/exported');
 if (!iap.includes('throw new IapUnavailableError')) fail('lazy loader never throws IapUnavailableError');
 ok('native module is lazy-loaded with IapUnavailableError on missing linkage');
@@ -96,7 +111,7 @@ if (!iap.includes('finishTransaction')) fail('no finishTransaction call: purchas
 ok('purchase flow finishes transactions');
 
 // 5. No mock/simulated/fake purchase paths.
-for (const [name, src] of [['services/iap.ts', iap], ['app/paywall.tsx', paywall]]) {
+for (const [name, src] of [['services/iap.native.ts', iap], ['app/paywall.tsx', paywall]]) {
   for (const banned of [/simulatePurchase/i, /mockPurchase/i, /fakePurchase/i, /MOCK_PURCHASE/, /demoPurchase/i]) {
     if (banned.test(src)) fail(`${name} contains a mock/simulated purchase path (${banned})`);
   }
@@ -118,7 +133,7 @@ ok('paywall links to Terms of use and Privacy policy');
 // sends each purchase to the validate-receipt edge function and retries
 // pending purchases.
 for (const needle of ['validate-receipt', 'validateReceiptWithServer', 'retryPendingValidations']) {
-  if (!iap.includes(needle)) fail(`services/iap.ts does not implement P1-2 receipt validation (${needle} missing)`);
+  if (!iap.includes(needle)) fail(`services/iap.native.ts does not implement P1-2 receipt validation (${needle} missing)`);
 }
 ok('P1-2 receipt validation is implemented (validate-receipt call + retries)');
 
@@ -128,9 +143,9 @@ ok('Settings links to the paywall');
 
 // 10. No hardcoded secrets.
 for (const banned of [/sk_live_/i, /pk_live_/i, /API_KEY\s*=\s*['"][A-Za-z0-9]/, /shared[_-]?secret/i]) {
-  if (banned.test(iap)) fail(`services/iap.ts may contain a hardcoded secret (${banned})`);
+  if (banned.test(iap)) fail(`services/iap.native.ts may contain a hardcoded secret (${banned})`);
 }
-ok('no hardcoded secrets in services/iap.ts');
+ok('no hardcoded secrets in services/iap.native.ts');
 
 // 11. Settings exposes a standalone Restore purchases row (P1-3, App Store requirement).
 if (!settings.includes('restorePurchases')) fail('Settings does not wire a standalone restorePurchases call');

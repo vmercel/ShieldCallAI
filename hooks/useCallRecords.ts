@@ -18,7 +18,6 @@ export function useCallRecords() {
     totalCalls: 0,
     scamsBlocked: 0,
     ghostModeCalls: 0,
-    estimatedSavings: 0,
     topScamTypes: [] as { type: string; count: number }[],
     safeCallsPercent: 100,
   });

@@ -19,7 +19,7 @@
 
 import { Platform } from 'react-native';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { supabase } from './supabaseClient';
 import { startExclusiveRecording, stopExclusiveRecording } from './micRecorder';
 
@@ -202,10 +202,11 @@ export async function captureSpokenUtterance(): Promise<{ transcript: string; er
 
     if (!uri) return { transcript: '', error: "I didn't catch that" };
 
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+    // expo-file-system v19 File API (legacy readAsStringAsync throws at runtime)
+    const base64 = await new File(uri).base64();
+    try {
+      new File(uri).delete();
+    } catch {}
 
     if (!base64) return { transcript: '', error: "I didn't catch that" };
 

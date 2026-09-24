@@ -37,7 +37,7 @@ export default function InsightsScreen() {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `ShieldCall AI SENTINEL™ protected me from ${stats.scamsBlocked} scam attempts this month — estimated $${stats.estimatedSavings.toLocaleString()} in losses prevented. shieldcallai.com`,
+        message: `ShieldCall AI SENTINEL™ intercepted ${stats.scamsBlocked} scam attempts this month across ${stats.totalCalls} analyzed calls. shieldcallai.com`,
       });
     } catch {}
   };
@@ -91,7 +91,7 @@ export default function InsightsScreen() {
         <View style={styles.reportStats}>
           {[
             { num: stats.scamsBlocked, label: 'Scams\nBlocked', color: Colors.danger },
-            { num: `$${stats.estimatedSavings >= 1000 ? (stats.estimatedSavings / 1000).toFixed(1) + 'k' : stats.estimatedSavings}`, label: 'Est.\nSavings', color: Colors.safe },
+            { num: stats.totalCalls, label: 'Calls\nAnalyzed', color: Colors.safe },
             { num: stats.ghostModeCalls, label: 'Ghost\nCalls', color: Colors.primary },
           ].map((s, i) => (
             <React.Fragment key={i}>

@@ -159,7 +159,6 @@ export const callRecordsService = {
       totalCalls: number;
       scamsBlocked: number;
       ghostModeCalls: number;
-      estimatedSavings: number;
       topScamTypes: { type: string; count: number }[];
       safeCallsPercent: number;
     } | null;
@@ -192,7 +191,6 @@ export const callRecordsService = {
         totalCalls: total,
         scamsBlocked,
         ghostModeCalls,
-        estimatedSavings: danger * 700 + warning * 200,
         topScamTypes,
         safeCallsPercent: total > 0 ? Math.round((safe / total) * 100) : 100,
       },
