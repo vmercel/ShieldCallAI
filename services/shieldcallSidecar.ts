@@ -58,15 +58,26 @@ export function sidecarBaseUrl(): string {
 }
 
 async function jsonFetch(url: string, init?: RequestInit): Promise<any> {
+  const token = (process.env.EXPO_PUBLIC_SHIELDCALL_TOKEN || '').trim();
   const res = await fetch(url, {
     ...init,
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers || {}),
+    },
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`${res.status} ${text}`);
   }
   return res.json();
+}
+
+/** Bearer token sent to the sidecar, or '' when unconfigured. */
+export function sidecarToken(): string {
+  return (process.env.EXPO_PUBLIC_SHIELDCALL_TOKEN || '').trim();
 }
 
 export async function sidecarHealth(base = sidecarBaseUrl()): Promise<SidecarHealth> {
