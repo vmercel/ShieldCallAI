@@ -57,8 +57,25 @@ export function sidecarBaseUrl(): string {
   return DEFAULT_URL;
 }
 
+async function sidecarBearerToken(): Promise<string | undefined> {
+  // A provisioned static token (SBC/lab integrations) always wins.
+  const staticToken = (process.env.EXPO_PUBLIC_SHIELDCALL_TOKEN || '').trim();
+  if (staticToken) return staticToken;
+  // Otherwise, when the user is signed in, present their Supabase access
+  // token: a sidecar with SHIELDCALL_APP_JWT_JWKS_URL configured accepts it
+  // as the Bearer token (per-user auth, per-user quota, per-user call
+  // ownership server-side). Nothing is sent when signed out.
+  try {
+    const { supabase } = await import('./supabaseClient');
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function jsonFetch(url: string, init?: RequestInit): Promise<any> {
-  const token = (process.env.EXPO_PUBLIC_SHIELDCALL_TOKEN || '').trim();
+  const token = await sidecarBearerToken();
   const res = await fetch(url, {
     ...init,
     headers: {
