@@ -70,6 +70,30 @@ function parseDotEnv(text) {
 if (!fs.existsSync(EXAMPLE_PATH)) fail('.env.example is missing at the repo root');
 if (!fs.existsSync(ENV_TS_PATH)) fail('services/env.ts is missing');
 
+// Regression guard (P0-1 class, recurred 2026-09-13, 2026-09-22, 2026-09-25):
+// the real .env must never be tracked in git. External commits (brand sweeps,
+// builder syncs) have re-added it with `git add -f`, bypassing .gitignore.
+// .env.example is the only dotenv file that may be tracked.
+try {
+  const { execFileSync } = require('child_process');
+  const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const bad = tracked.filter(
+    (p) => p === '.env' || (/^\.env\./.test(p) && p !== '.env.example') || /^\.env\.local$/.test(p),
+  );
+  if (bad.length > 0) {
+    fail(
+      `secret-bearing dotenv file(s) tracked in git: ${bad.join(', ')}. ` +
+        'Run `git rm --cached <file>` (keeps the working file) and recommit.',
+    );
+  }
+  console.log('[check-env] OK: no secret dotenv file tracked in git.');
+} catch (err) {
+  fail(`could not verify tracked files via git ls-files: ${(err && err.message) || err}`);
+}
+
 const exampleKeys = parseExampleKeys(fs.readFileSync(EXAMPLE_PATH, 'utf8'));
 const requiredVars = parseRequiredVars(fs.readFileSync(ENV_TS_PATH, 'utf8'));
 
