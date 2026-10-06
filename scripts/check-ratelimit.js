@@ -145,12 +145,16 @@ async function main() {
 
   // --- wiring regression guard (P0-3b x2) ---
   // The quota _module_ survived both regressions; what kept getting dropped
-  // was the wiring in the two AI functions. These assertions read the actual
+  // was the wiring in the AI functions. These assertions read the actual
   // function sources so a future rewrite that silently drops the gate fails
   // this check instead of shipping unprotected AI endpoints.
+  // 2026-10-06: extended to call-summary and sentinel-analysis, which were
+  // found ungated (paid Anthropic endpoints, no per-user quota).
   const wiringTargets = [
     { file: 'ghost-ai/index.ts', functionName: 'ghost-ai' },
     { file: 'transcribe-audio/index.ts', functionName: 'transcribe-audio' },
+    { file: 'call-summary/index.ts', functionName: 'call-summary' },
+    { file: 'sentinel-analysis/index.ts', functionName: 'sentinel-analysis' },
   ];
   for (const t of wiringTargets) {
     const srcPath = path.join(ROOT, 'supabase', 'functions', t.file);

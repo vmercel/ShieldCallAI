@@ -146,7 +146,11 @@ function blendVoice(
 }
 
 // ─── Claude SENTINEL™ Edge Function Call ─────────────────────────────────────
-let claudeUnavailable = false;
+// A 404 (function not deployed / mid-redeploy) pauses calls for a cooldown
+// instead of latching off forever: the local Sentinel engine keeps scoring
+// meanwhile, and the cloud path recovers on its own once the function is back.
+let claudeCooldownUntil = 0;
+const CLAUDE_COOLDOWN_MS = 5 * 60 * 1000;
 
 async function callClaudeSentinel(params: {
   currentChunk: string;
@@ -161,7 +165,7 @@ async function callClaudeSentinel(params: {
   callDirection: string;
   durationSeconds: number;
 }): Promise<Record<string, unknown> | null> {
-  if (claudeUnavailable) return null;
+  if (Date.now() < claudeCooldownUntil) return null;
   try {
     const { data, error } = await supabase.functions.invoke('sentinel-analysis', { body: params });
     if (error) {
@@ -170,7 +174,7 @@ async function callClaudeSentinel(params: {
         try { msg = await error.context?.text(); } catch {}
       }
       if (String(msg).includes('not_found_error') || String(msg).includes('404')) {
-        claudeUnavailable = true;
+        claudeCooldownUntil = Date.now() + CLAUDE_COOLDOWN_MS;
       }
       console.warn('Claude SENTINEL error:', msg);
       return null;

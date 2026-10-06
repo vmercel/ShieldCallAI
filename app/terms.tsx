@@ -21,7 +21,7 @@ const BLOCKS: Block[] = [
   {
     heading: '2. What the App is',
     paragraphs: [
-      'ShieldCall AI is a free app. There are no in-app purchases in v1. Live Protect listens on this phone\'s microphone while a call is on speaker, scores scam language, and warns on screen.',
+      'ShieldCall AI is free to download, and its core call-protection features are free. Optional ShieldCall Pro and Family subscriptions are offered as auto-renewing in-app purchases billed through the App Store or Google Play; they appear on the plans screen once the subscriptions are created in the stores. Live Protect listens on this phone\'s microphone while a call is on speaker, scores scam language, and warns on screen.',
       'The App never hangs up a call and never joins the carrier call. It is not a carrier intercept.',
     ],
   },
@@ -62,9 +62,10 @@ const BLOCKS: Block[] = [
     ],
   },
   {
-    heading: '8. Free app',
+    heading: '8. Subscriptions',
     paragraphs: [
-      'The App is free. v1 has no subscriptions and no in-app purchases. If you see leftover upgrade copy in an older screen, it is not an offer to buy and has no effect.',
+      'Core call protection is free. ShieldCall Pro and ShieldCall Family are optional auto-renewing subscriptions purchased in the app and billed through the App Store or Google Play. They renew monthly until cancelled; cancel anytime from your store subscription settings or from the Manage subscriptions row on the plans screen.',
+      'No purchase can be completed while the store products are not yet available: the plans screen says so and offers no working Buy button until the stores return the products.',
     ],
   },
   {
@@ -77,7 +78,7 @@ const BLOCKS: Block[] = [
     heading: '10. Limitation of liability',
     paragraphs: [
       'TO THE MAXIMUM EXTENT PERMITTED BY LAW, SHIELDCALL IS NOT LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING FINANCIAL LOSS FROM A SCAM (WHETHER OR NOT THE APP WARNED YOU), LEGAL CONSEQUENCES OF ANALYZING A CALL, LOST DATA, OR SERVICE INTERRUPTION.',
-      'BECAUSE THE APP IS FREE, OUR TOTAL LIABILITY FOR ALL CLAIMS WILL NOT EXCEED THE GREATER OF THE AMOUNT YOU PAID US FOR THE APP (ZERO) OR THE MINIMUM AMOUNT REQUIRED BY APPLICABLE LAW.',
+      'OUR TOTAL LIABILITY FOR ALL CLAIMS WILL NOT EXCEED THE GREATER OF THE AMOUNT YOU PAID US FOR THE APP AND ANY SUBSCRIPTIONS IN THE TWELVE MONTHS BEFORE THE CLAIM AROSE, OR THE MINIMUM AMOUNT REQUIRED BY APPLICABLE LAW.',
     ],
   },
   {
@@ -127,10 +128,10 @@ export default function TermsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} showsVerticalScrollIndicator={false}>
-        <Text style={styles.effective}>Effective 7 September 2026</Text>
+        <Text style={styles.effective}>Effective 6 October 2026</Text>
         <View style={styles.callout}>
           <Text style={styles.calloutText}>
-            Recommend-only. You must have the legal right to analyze the call. Not a certified fraud product. Free. No in-app purchases.
+            Recommend-only. You must have the legal right to analyze the call. Not a certified fraud product.
           </Text>
         </View>
 

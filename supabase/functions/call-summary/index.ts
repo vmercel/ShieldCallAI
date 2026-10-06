@@ -6,6 +6,11 @@
  */
 
 import { corsHeaders } from '../_shared/cors.ts';
+import {
+  authorizeAndCheckQuota,
+  parseLimit,
+  withQuotaHeaders,
+} from '../_shared/rateLimit.ts';
 
 const SYSTEM_PROMPT = `You are ShieldCall AI's post-call AI analyst. Given a call transcript and threat data, generate a concise, actionable call summary.
 
@@ -41,6 +46,15 @@ Deno.serve(async (req: Request) => {
     if (!apiKey) {
       throw new Error('AI provider credentials not configured');
     }
+
+    // P0-3: per-user quota on the paid LLM endpoint (after the key check,
+    // so misconfiguration never consumes a user's quota; the cheap ping
+    // probe above stays outside the gate).
+    const gate = await authorizeAndCheckQuota(req, {
+      functionName: 'call-summary',
+      limit: parseLimit(Deno.env.get('RATE_LIMIT_CALL_SUMMARY_PER_HOUR'), 120),
+    });
+    if (!gate.ok) return gate.response;
 
     const { transcript, threatScore, threatLevel, flags, duration, callerName, callerNumber } = body;
 
@@ -96,9 +110,9 @@ Deno.serve(async (req: Request) => {
       };
     }
 
-    return new Response(JSON.stringify(result), {
+    return withQuotaHeaders(new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    }), gate.quota);
   } catch (error) {
     console.error('Call Summary error:', error);
     return new Response(

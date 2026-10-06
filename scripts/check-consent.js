@@ -108,9 +108,13 @@ function main() {
   // --- migration SQL (static) ---
   const migrations = fs.readdirSync(path.join(ROOT, 'supabase', 'migrations'))
     .filter((f) => f.endsWith('.sql'));
-  const delMig = migrations.filter((f) => /data_deletion/.test(f));
-  assert(delMig.length === 1, 'migration: exactly one data_deletion migration');
-  const sql = fs.readFileSync(path.join(ROOT, 'supabase', 'migrations', delMig[0]), 'utf8');
+  const delMig = migrations.filter((f) => /data_deletion/.test(f)).sort();
+  assert(delMig.length >= 1, 'migration: at least one data_deletion migration');
+  // Later migrations supersede earlier ones (e.g. the 2026-10-06 resilience
+  // follow-up): assert on the concatenated sources in apply order.
+  const sql = delMig
+    .map((f) => fs.readFileSync(path.join(ROOT, 'supabase', 'migrations', f), 'utf8'))
+    .join('\n');
   const low = sql.toLowerCase();
   assert(low.includes('my_data_summary'), 'migration: my_data_summary() defined');
   assert(low.includes('delete_my_data'), 'migration: delete_my_data() defined');

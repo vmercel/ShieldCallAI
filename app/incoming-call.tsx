@@ -134,7 +134,9 @@ export default function IncomingCallScreen() {
       } else if (settings.autoScreenUnknown && !autoRoutedRef.current) {
         // Unknown caller + auto-screen enabled → route to Ghost Mode
         autoRoutedRef.current = true;
-        setTimeout(() => handleGhost(), 900);
+        // Tracked in `timeouts` so unmount (e.g. user declines first)
+        // cancels the auto-route instead of answering a declined call.
+        timeouts.push(setTimeout(() => handleGhost(), 900));
       }
     });
 

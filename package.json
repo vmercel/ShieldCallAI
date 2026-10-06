@@ -27,7 +27,8 @@
     "check:voip-push": "node scripts/check-voip-push.js",
     "load:test": "node scripts/load-test-edge-functions.js --out docs/load-test.md",
     "check:load-test": "node scripts/check-load-test.js",
-    "check:device-checklist": "node scripts/check-device-checklist.js"
+    "check:device-checklist": "node scripts/check-device-checklist.js",
+    "check:data-deletion": "node scripts/check-data-deletion.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.1",

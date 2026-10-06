@@ -23,6 +23,11 @@
  */
 
 import { corsHeaders } from '../_shared/cors.ts';
+import {
+  authorizeAndCheckQuota,
+  parseLimit,
+  withQuotaHeaders,
+} from '../_shared/rateLimit.ts';
 
 const SYSTEM_PROMPT = `You are SENTINEL™, an expert real-time call threat analysis AI for ShieldCall AI. Your job is to detect scams, fraud, social engineering, and synthetic/AI voices in live phone calls.
 
@@ -82,11 +87,31 @@ Deno.serve(async (req: Request) => {
 
   try {
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
+    const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-haiku-4-5-20251001';
+
+    const body = await req.json().catch(() => ({}));
+
+    // Cheap health probe: answers without calling the AI (no spend)
+    if (body?.ping === true) {
+      return new Response(
+        JSON.stringify({ ok: true, service: 'sentinel-analysis', aiConfigured: !!anthropicKey, model }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (!anthropicKey) {
       throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
-    const body = await req.json();
+    // P0-3: per-user quota on the paid LLM endpoint (after the key check,
+    // so misconfiguration never consumes a user's quota; the cheap ping
+    // probe above stays outside the gate).
+    const gate = await authorizeAndCheckQuota(req, {
+      functionName: 'sentinel-analysis',
+      limit: parseLimit(Deno.env.get('RATE_LIMIT_SENTINEL_ANALYSIS_PER_HOUR'), 120),
+    });
+    if (!gate.ok) return gate.response;
+
     const {
       currentChunk,          // string: last 10s of transcript
       fullTranscript,        // string: entire call transcript so far
@@ -131,7 +156,7 @@ Analyze ALL of the above holistically. Apply the peak ratchet rule: if peakRiskS
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model,
         max_tokens: 600,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
@@ -177,9 +202,9 @@ Analyze ALL of the above holistically. Apply the peak ratchet rule: if peakRiskS
     result.callerTypeConfidence = Math.max(0, Math.min(100, parseInt(result.callerTypeConfidence) || 0));
     result.contentVerdictConfidence = Math.max(0, Math.min(100, parseInt(result.contentVerdictConfidence) || 0));
 
-    return new Response(JSON.stringify(result), {
+    return withQuotaHeaders(new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    }), gate.quota);
 
   } catch (error) {
     console.error('SENTINEL Analysis error:', error);
