@@ -1,3 +1,9 @@
+// Disable the Expo Metro template package-tree mismatch check BEFORE
+// getDefaultConfig() runs its validation (duplicate metro-config /
+// metro-source-map packages detected when a transitive dep brings in a
+// second copy of a Metro sub-package).
+process.env.EXPO_NO_METRO_CONFIG_VALIDATION = '1';
+
 const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
@@ -12,12 +18,5 @@ config.resolver = {
   unstable_enablePackageExports: false,
   unstable_enableSymlinks: false,
 };
-
-// Disable the Expo Metro template package-tree mismatch check entirely.
-// The check compares installed metro-* sub-packages against a hard-coded
-// template manifest and throws when a transitive dep brings in a different
-// patch version. Suppressing it here is safe: it is a dev-time warning
-// only and does not affect the compiled bundle.
-process.env.EXPO_NO_METRO_CONFIG_VALIDATION = '1';
 
 module.exports = config;
