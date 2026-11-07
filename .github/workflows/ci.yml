@@ -1,0 +1,34 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - name: Lint
+        run: npm run lint --if-present
+        continue-on-error: true
+      - name: Typecheck
+        run: npx tsc --noEmit
+        continue-on-error: true
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Block secrets in the working tree
+        run: |
+          if git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v example; then echo ".env file tracked"; exit 1; fi
+          if git grep -nE "ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|sk_live_[A-Za-z0-9]{10,}" -- . ':!.github'; then echo "Secret-looking string"; exit 1; fi
