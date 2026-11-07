@@ -14,6 +14,7 @@ This repository is a research prototype. It is not a carrier product, not a cert
   <img src="https://img.shields.io/badge/Platform-React%20Native%20%7C%20Expo-00B4D8?style=flat-square&logo=expo&logoColor=white" />
   <img src="https://img.shields.io/badge/Language-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" />
   <img src="https://img.shields.io/badge/Status-research%20prototype-yellow?style=flat-square" />
+  <img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square" />
 </p>
 
 ## What it is
@@ -112,4 +113,8 @@ PhD Physics; MSc Artificial Intelligence Engineering
 
 ## License
 
-Proprietary. Research prototype. Not a commercial product.
+Licensed under the [Apache License 2.0](LICENSE). This is a research prototype, not a commercial product, and it is provided without warranty.
+
+## Feedback and support
+
+If you work on telephone fraud, speech anti-spoofing, or consumer protection and find this useful, please [star the repository](https://github.com/vmercel/ShieldCallAI) and open an issue with feedback, test results, or questions. Independent review is welcome.
